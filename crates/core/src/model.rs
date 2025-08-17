@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub struct Frame {
@@ -50,12 +50,28 @@ pub struct AnnotationMeta {
 
 #[derive(Debug, Clone)]
 pub enum AnnotationKind {
-    Rect { corner_radius: u8 },
-    Arrow { head_size: u8, line_style: LineStyle },
-    Text { content: String, font_family: String, font_size: u32 },
-    Highlight { mode: BlendMode },
-    Mosaic { level: u8 },
-    Freehand { points: Vec<(f32, f32)>, smoothing: f32 },
+    Rect {
+        corner_radius: u8,
+    },
+    Arrow {
+        head_size: u8,
+        line_style: LineStyle,
+    },
+    Text {
+        content: String,
+        font_family: String,
+        font_size: u32,
+    },
+    Highlight {
+        mode: BlendMode,
+    },
+    Mosaic {
+        level: u8,
+    },
+    Freehand {
+        points: Vec<(f32, f32)>,
+        smoothing: f32,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -16,7 +16,12 @@ pub struct UndoStack {
 }
 
 impl UndoStack {
-    pub fn new(cap: usize) -> Self { Self { ops: Vec::new(), cap } }
+    pub fn new(cap: usize) -> Self {
+        Self {
+            ops: Vec::new(),
+            cap,
+        }
+    }
 
     pub fn push(&mut self, op: UndoOp) {
         if let Some(k) = &op.merge_key {
@@ -45,7 +50,9 @@ impl UndoStack {
         }
     }
 
-    pub fn len(&self) -> usize { self.ops.len() }
+    pub fn len(&self) -> usize {
+        self.ops.len()
+    }
 }
 
 #[cfg(test)]
@@ -77,42 +84,54 @@ mod tests {
 
     #[test]
     fn merge_drag_ops() {
-        let mut ctx = UndoContext { annotations: vec![dummy_annotation(0)] };
+        let mut ctx = UndoContext {
+            annotations: vec![dummy_annotation(0)],
+        };
         let mut stack = UndoStack::new(10);
         let mut a1 = ctx.annotations[0].meta.x;
         ctx.annotations[0].meta.x = 5.0;
         stack.push(UndoOp {
             merge_key: Some("drag".into()),
             apply: Box::new(|_| {}),
-            revert: Box::new(move |c: &mut UndoContext| { c.annotations[0].meta.x = a1; }),
+            revert: Box::new(move |c: &mut UndoContext| {
+                c.annotations[0].meta.x = a1;
+            }),
         });
         a1 = 5.0;
         ctx.annotations[0].meta.x = 8.0;
         stack.push(UndoOp {
             merge_key: Some("drag".into()),
             apply: Box::new(|_| {}),
-            revert: Box::new(move |c: &mut UndoContext| { c.annotations[0].meta.x = a1; }),
+            revert: Box::new(move |c: &mut UndoContext| {
+                c.annotations[0].meta.x = a1;
+            }),
         });
         assert_eq!(stack.len(), 1); // 合并
     }
 
     #[test]
     fn separate_property_changes() {
-        let mut ctx = UndoContext { annotations: vec![dummy_annotation(0)] };
+        let mut ctx = UndoContext {
+            annotations: vec![dummy_annotation(0)],
+        };
         let mut stack = UndoStack::new(10);
         let before_w = ctx.annotations[0].meta.w;
         ctx.annotations[0].meta.w = 20.0;
         stack.push(UndoOp {
             merge_key: None,
             apply: Box::new(|_| {}),
-            revert: Box::new(move |c: &mut UndoContext| { c.annotations[0].meta.w = before_w; }),
+            revert: Box::new(move |c: &mut UndoContext| {
+                c.annotations[0].meta.w = before_w;
+            }),
         });
         let before_h = ctx.annotations[0].meta.h;
         ctx.annotations[0].meta.h = 30.0;
         stack.push(UndoOp {
             merge_key: None,
             apply: Box::new(|_| {}),
-            revert: Box::new(move |c: &mut UndoContext| { c.annotations[0].meta.h = before_h; }),
+            revert: Box::new(move |c: &mut UndoContext| {
+                c.annotations[0].meta.h = before_h;
+            }),
         });
         assert_eq!(stack.len(), 2);
         assert!(stack.undo(&mut ctx));

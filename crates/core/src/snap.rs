@@ -55,7 +55,12 @@ pub fn snap_rect(
         }
     }
 
-    SnapResult { dx: best_dx, dy: best_dy, snap_x, snap_y: snap_yv }
+    SnapResult {
+        dx: best_dx,
+        dy: best_dy,
+        snap_x,
+        snap_y: snap_yv,
+    }
 }
 
 #[cfg(test)]
@@ -64,7 +69,12 @@ mod tests {
 
     #[test]
     fn test_snap_x_center() {
-        let r = Rect { x: 95.0, y: 10.0, w: 20.0, h: 20.0 };
+        let r = Rect {
+            x: 95.0,
+            y: 10.0,
+            w: 20.0,
+            h: 20.0,
+        };
         let res = snap_rect(r, &[100.0], &[], 6.0);
         assert_eq!(res.snap_x, Some(100.0));
         assert!((r.x + r.w / 2.0 + res.dx - 100.0).abs() < 0.01);
@@ -72,7 +82,12 @@ mod tests {
 
     #[test]
     fn test_no_snap_outside_threshold() {
-        let r = Rect { x: 10.0, y: 10.0, w: 10.0, h: 10.0 };
+        let r = Rect {
+            x: 10.0,
+            y: 10.0,
+            w: 10.0,
+            h: 10.0,
+        };
         let res = snap_rect(r, &[30.0], &[30.0], 6.0);
         assert!(res.snap_x.is_none());
         assert!(res.snap_y.is_none());
@@ -80,7 +95,12 @@ mod tests {
 
     #[test]
     fn test_snap_y_bottom() {
-        let r = Rect { x: 0.0, y: 0.0, w: 10.0, h: 10.0 };
+        let r = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 10.0,
+            h: 10.0,
+        };
         let res = snap_rect(r, &[], &[11.0], 6.0);
         assert_eq!(res.snap_y, Some(11.0));
         assert!((r.y + r.h + res.dy - 11.0).abs() < 0.01);

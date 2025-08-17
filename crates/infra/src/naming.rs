@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local, Utc};
-use regex::Regex;
 use once_cell::sync::OnceCell;
+use regex::Regex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static SEQ: AtomicU32 = AtomicU32::new(0);
