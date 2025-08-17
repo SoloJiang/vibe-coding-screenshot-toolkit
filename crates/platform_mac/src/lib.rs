@@ -1,0 +1,1 @@
+// macOS platform implementation placeholder

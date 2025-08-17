@@ -1,0 +1,23 @@
+[package]
+name = "api_napi"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+# 默认不启用 node (napi)，保持纯 Rust 构建绿色
+default = []
+# 启用与 Node.js 的 N-API 绑定
+node = ["napi", "napi-derive"]
+
+[dependencies]
+tracing = { workspace = true }
+screenshot_core = { path = "../core" }
+services = { path = "../services" }
+infra = { path = "../infra" }
+
+# 可选的 napi 绑定依赖，在启用 feature node 时才编译
+napi = { version = "2", optional = true, default-features = false, features = ["napi4"] }
+napi-derive = { version = "2", optional = true }
+
+[package.metadata]
+# 使用 feature `node` 控制 N-API 支持；未开启时提供纯 Rust API

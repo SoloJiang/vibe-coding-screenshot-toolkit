@@ -1,0 +1,16 @@
+[package]
+name = "renderer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tracing = { workspace = true }
+smallvec = { workspace = true }
+anyhow = { workspace = true }
+screenshot_core = { path = "../core" }
+png = "0.17"
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+image = { version = "0.25", default-features = false, features=["jpeg"] }
+

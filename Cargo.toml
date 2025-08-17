@@ -1,0 +1,33 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/infra",
+    "crates/platform_mac",
+    "crates/platform_win",
+    "crates/renderer",
+    "crates/services",
+    "crates/ocr_adapter",
+    "crates/privacy",
+    "crates/api_napi",
+    "crates/api_cli",
+    "crates/macros"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+authors = ["Screenshot Tool Team"]
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v7", "serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"] }
+thiserror = "1"
+anyhow = "1"
+parking_lot = "0.12"
+smallvec = "1"
+chrono = { version = "0.4", features=["clock"] }
+regex = "1"
