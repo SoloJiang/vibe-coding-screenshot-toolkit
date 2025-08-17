@@ -9,7 +9,11 @@ pub struct LruCache<K, V> {
 
 impl<K: Eq + Hash + Clone, V> LruCache<K, V> {
     pub fn new(cap: usize) -> Self {
-        Self { cap, map: HashMap::new(), order: VecDeque::new() }
+        Self {
+            cap,
+            map: HashMap::new(),
+            order: VecDeque::new(),
+        }
     }
 
     pub fn put(&mut self, k: K, v: V) {
@@ -34,7 +38,13 @@ impl<K: Eq + Hash + Clone, V> LruCache<K, V> {
         self.map.get(k)
     }
 
-    pub fn len(&self) -> usize { self.map.len() }
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 }
 
 #[cfg(test)]

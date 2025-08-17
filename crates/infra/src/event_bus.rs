@@ -9,26 +9,48 @@ pub struct EventBus {
 }
 
 impl EventBus {
-    pub fn new() -> Self { Self { inner: RwLock::new(HashMap::new()) } }
+    pub fn new() -> Self {
+        Self {
+            inner: RwLock::new(HashMap::new()),
+        }
+    }
 
-    pub fn subscribe<E: 'static + Send + Sync>(&self, handler: impl Fn(&E) + Send + Sync + 'static) {
+    pub fn subscribe<E: 'static + Send + Sync>(
+        &self,
+        handler: impl Fn(&E) + Send + Sync + 'static,
+    ) {
         let mut map = self.inner.write().unwrap();
-        map.entry(TypeId::of::<E>()).or_default().push(Box::new(move |any| {
-            if let Some(e) = any.downcast_ref::<E>() { handler(e); }
-        }));
+        map.entry(TypeId::of::<E>())
+            .or_default()
+            .push(Box::new(move |any| {
+                if let Some(e) = any.downcast_ref::<E>() {
+                    handler(e);
+                }
+            }));
     }
 
     pub fn publish<E: 'static + Send + Sync>(&self, event: E) {
         if let Some(list) = self.inner.read().unwrap().get(&TypeId::of::<E>()) {
-            for h in list { h(&event); }
+            for h in list {
+                h(&event);
+            }
         }
+    }
+}
+
+impl Default for EventBus {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     #[test]
     fn test_event_bus() {

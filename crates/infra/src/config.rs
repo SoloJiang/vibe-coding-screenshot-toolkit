@@ -50,9 +50,15 @@ impl Default for AppConfig {
             default_save_path: "~/Pictures/Screenshots".into(),
             naming_template: "Screenshot-{date:yyyyMMdd-HHmmss}-{seq}".into(),
             recent_colors: vec![],
-            upload: UploadCfg { enabled: false, endpoint: "".into(), token: "".into() },
+            upload: UploadCfg {
+                enabled: false,
+                endpoint: "".into(),
+                token: "".into(),
+            },
             privacy: PrivacyCfg { enabled: true },
-            ocr: OcrCfg { engine: "tesseract".into() },
+            ocr: OcrCfg {
+                engine: "tesseract".into(),
+            },
         }
     }
 }
@@ -67,7 +73,9 @@ pub fn load_config() -> io::Result<AppConfig> {
 }
 pub fn save_config(cfg: &AppConfig) -> io::Result<()> {
     let p = resolve_paths().config;
-    if let Some(dir) = p.parent() { fs::create_dir_all(dir)?; }
+    if let Some(dir) = p.parent() {
+        fs::create_dir_all(dir)?;
+    }
     let tmp = p.with_extension("tmp");
     fs::write(&tmp, serde_json::to_vec_pretty(cfg).unwrap())?;
     fs::rename(tmp, p)?;
