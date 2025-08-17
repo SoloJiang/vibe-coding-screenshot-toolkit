@@ -53,6 +53,10 @@ impl UndoStack {
     pub fn len(&self) -> usize {
         self.ops.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
 }
 
 #[cfg(test)]

@@ -57,6 +57,10 @@ impl AnnotationService {
     }
 }
 
+impl Default for AnnotationService {
+    fn default() -> Self { Self::new() }
+}
+
 pub trait Clipboard: Send + Sync {
     fn write_image(&self, _bytes: &[u8]) -> anyhow::Result<()> {
         Ok(())
@@ -86,7 +90,7 @@ impl<CP: Clipboard> ExportService<CP> {
     ) -> anyhow::Result<Vec<u8>> {
         let frame = &screenshot.raw.primary;
         let img = self.renderer.render(frame, annotations);
-        self.encoder.encode_png(&img).map_err(|e| e.into())
+    self.encoder.encode_png(&img)
     }
 
     pub fn export_png_to_clipboard(
@@ -117,9 +121,7 @@ impl<CP: Clipboard> ExportService<CP> {
     ) -> anyhow::Result<Vec<u8>> {
         let frame = &screenshot.raw.primary;
         let img = self.renderer.render(frame, annotations);
-        self.encoder
-            .encode_jpeg(&img, quality)
-            .map_err(|e| e.into())
+    self.encoder.encode_jpeg(&img, quality)
     }
 
     pub fn export_jpeg_to_file<P: AsRef<Path>>(

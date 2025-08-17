@@ -41,6 +41,10 @@ impl<K: Eq + Hash + Clone, V> LruCache<K, V> {
     pub fn len(&self) -> usize {
         self.map.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 }
 
 #[cfg(test)]

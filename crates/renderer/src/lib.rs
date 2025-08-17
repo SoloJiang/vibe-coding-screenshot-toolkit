@@ -29,6 +29,7 @@ impl Image {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32, r: u8, g: u8, b: u8, a: u8) {
         let (w0, h0) = (self.width as i32, self.height as i32);
         let x2 = (x + w).min(w0);
@@ -78,7 +79,7 @@ impl Renderer for SimpleRenderer {
             match &ann.kind {
                 AnnotationKind::Rect { .. } => {
                     let meta = &ann.meta;
-                    let opacity = meta.opacity.clamp(0.0, 1.0) as f32;
+                    let opacity = meta.opacity.clamp(0.0, 1.0);
                     if let Some(fill) = &meta.fill_color {
                         if let Some((r, g, b)) = parse_hex_color(fill) {
                             blend_fill_rect(
@@ -241,7 +242,7 @@ impl Renderer for SimpleRenderer {
                 } => {
                     // 初版占位实现：按固定宽度网格填充字符块，后续引入 fontdue 栅格真正字形
                     let m = &ann.meta;
-                    let opacity = m.opacity.clamp(0.0, 1.0) as f32;
+                    let opacity = m.opacity.clamp(0.0, 1.0);
                     let (r, g, b) = m
                         .fill_color
                         .as_ref()
@@ -287,6 +288,7 @@ fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blend_fill_rect(img: &mut Image, x: i32, y: i32, w: i32, h: i32, r: u8, g: u8, b: u8, a: u8) {
     let (w0, h0) = (img.width as i32, img.height as i32);
     let x2 = (x + w).min(w0);
@@ -356,6 +358,7 @@ fn blend_pixel_mode(dst: &mut [u8], sr: (u8, u8, u8, u8), mode: Blend) {
     dst[3] = (out_a * 255.0) as u8;
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stroke_rect(
     img: &mut Image,
     x: i32,
@@ -379,6 +382,7 @@ fn stroke_rect(
     blend_fill_rect(img, x + w - t, y, t, h, r, g, b, a);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn highlight_rect(
     img: &mut Image,
     x: i32,
@@ -511,6 +515,7 @@ impl ExportEncoder for PngEncoder {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_thick_line(
     img: &mut Image,
     x0: i32,
@@ -550,6 +555,7 @@ fn draw_thick_line(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_arrow_head(
     img: &mut Image,
     x0: i32,
@@ -577,6 +583,7 @@ fn draw_arrow_head(
     fill_triangle(img, p1, p2, p3, r, g, b, a);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn fill_triangle(
     img: &mut Image,
     p1: (f32, f32),
@@ -612,6 +619,7 @@ fn fill_triangle(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_dashed_line(
     img: &mut Image,
     x0: i32,

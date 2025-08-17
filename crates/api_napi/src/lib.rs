@@ -3,9 +3,8 @@
 
 #[cfg(feature = "node")]
 mod node_api {
-    use napi::bindgen_prelude::*;
-
-    #[napi]
+    // 直接使用宏定义所在 crate，避免由于关闭 napi 默认特性导致的 re-export 丢失
+    #[napi_derive::napi]
     pub fn version() -> String {
         env!("CARGO_PKG_VERSION").to_string()
     }
