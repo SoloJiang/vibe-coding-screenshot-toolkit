@@ -12,6 +12,8 @@ pub enum ErrorKind {
     Io,
     #[error("upload failed")]
     Upload,
+    #[error("clipboard failed")]
+    Clipboard,
     #[error("ocr empty")]
     OcrEmpty,
     #[error("ocr failed")]

@@ -1,8 +1,5 @@
 # 产品需求文档 (PRD)
 
-(源自根目录 PRD.md v1.0，保持原始内容)
-
-<!-- BEGIN ORIGINAL CONTENT -->
 # 截图与标注工具 功能规格
 
 文档版本：v1.0
@@ -172,4 +169,3 @@
 ## 7. 附录：占位符语法
 `{date:yyyyMMdd-HHmmss}` 日期时间；`{seq}` 当日自增序号；`{screen}` 屏幕索引。未知占位符忽略。
 示例：`Screenshot-{date}-{seq}.png`
-<!-- END ORIGINAL CONTENT -->

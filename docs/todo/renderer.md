@@ -1,5 +1,8 @@
 # renderer 模块 todo
-(迁移自 TODO_renderer.md)
+
+## MVP
+- 已完：Image 结构 + Rect / Arrow / Text 占位 + Z 排序 + PNG 编码
+- 无新增待做（MVP 完成）
 
 ## m1
 - [x] Image 结构定义

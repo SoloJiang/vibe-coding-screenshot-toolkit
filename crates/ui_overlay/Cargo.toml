@@ -1,0 +1,16 @@
+[package]
+name = "ui_overlay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+iced = { version = "0.13", features = ["canvas", "tokio"] }
+image = { workspace = true }
+screenshot_core = { path = "../core" }
+
+[features]
+default = []

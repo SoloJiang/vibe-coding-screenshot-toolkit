@@ -1,5 +1,7 @@
 # platform_win 模块 todo
-(迁移自 TODO_platform_win.md)
+
+## MVP
+- 可选：Stub 返回 Unsupported（先专注 mac）
 
 ## m2
 - [ ] D3D11 初始化

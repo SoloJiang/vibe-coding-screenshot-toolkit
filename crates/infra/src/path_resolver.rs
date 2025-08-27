@@ -1,5 +1,6 @@
 use directories::ProjectDirs;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 pub struct Paths {
     pub base: PathBuf,
@@ -17,4 +18,12 @@ pub fn resolve_paths() -> Paths {
         history: base.join("history"),
         logs: base.join("logs"),
     }
+}
+
+/// 确保必要目录存在（幂等）。
+pub fn ensure_directories<P: AsRef<Path>>(dirs: &[P]) -> std::io::Result<()> {
+    for d in dirs {
+        fs::create_dir_all(d.as_ref())?;
+    }
+    Ok(())
 }

@@ -33,6 +33,21 @@ pub fn next_seq(now: DateTime<Utc>) -> u32 {
     SEQ_COUNTER.fetch_add(1, Ordering::Relaxed) + 1
 }
 
+/// 设置指定日期下当前序列值（用于跨进程持久化恢复）。
+/// 传入的 value 表示“已使用的最后一个值”，下一次 next_seq 会在其基础上 +1。
+pub fn set_sequence_for(date: &str, value: u32) {
+    {
+        let mut guard = SEQ_DAY.write().unwrap();
+        *guard = Some(date.to_string());
+    }
+    SEQ_COUNTER.store(value, Ordering::Relaxed);
+}
+
+/// 当前（已分配的）序列值（未调用 next_seq 返回 0）。
+pub fn current_sequence() -> u32 {
+    SEQ_COUNTER.load(Ordering::Relaxed)
+}
+
 /// 解析命名模板，占位符：{date:FORMAT} {seq} {screen}
 pub fn parse_naming_template(tpl: &str, screen_index: usize, now: DateTime<Utc>) -> String {
     let mut out = String::with_capacity(tpl.len() + 16);

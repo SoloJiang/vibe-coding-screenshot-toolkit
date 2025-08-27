@@ -1,5 +1,7 @@
 # ocr_adapter 模块 todo
-(迁移自 TODO_ocr_adapter.md)
+
+## MVP
+- 跳过：模块整体延后
 
 ## m3
 - [ ] tesseract 初始化

@@ -1,5 +1,7 @@
 # macros 模块 todo
-(迁移自 TODO_macros.md)
+
+## MVP
+- 跳过：全部延后
 
 ## m5
 - [ ] 派生宏列表评估

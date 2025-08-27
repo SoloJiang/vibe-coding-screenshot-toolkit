@@ -1,5 +1,7 @@
 # api_napi 模块 todo
-(迁移自 TODO_api_napi.md)
+
+## MVP
+- 跳过：仅保留 version() 占位
 
 ## m1
 - [ ] Runtime 初始化
