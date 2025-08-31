@@ -238,11 +238,11 @@ impl MacCapturer {
         }
         let mut bytes = vec![0u8; (cw * ch * 4) as usize];
         for row in 0..ch {
-            for col in 0..cw {
-                let src_i = (((y + row) * frame.width + (x + col)) * 4) as usize;
-                let dst_i = ((row * cw + col) * 4) as usize;
-                bytes[dst_i..dst_i + 4].copy_from_slice(&frame.bytes[src_i..src_i + 4]);
-            }
+            let src_row_start = (((y + row) * frame.width + x) * 4) as usize;
+            let src_row_end = src_row_start + (cw * 4) as usize;
+            let dst_row_start = (row * cw * 4) as usize;
+            let dst_row_end = dst_row_start + (cw * 4) as usize;
+            bytes[dst_row_start..dst_row_end].copy_from_slice(&frame.bytes[src_row_start..src_row_end]);
         }
         drop(timer);
         Ok(Self::build_screenshot(cw, ch, bytes))
