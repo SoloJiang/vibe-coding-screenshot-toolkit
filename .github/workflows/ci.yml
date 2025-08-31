@@ -43,7 +43,7 @@ jobs:
 
       - name: Build (all targets) - Windows
         if: runner.os == 'Windows'
-        run: cargo build --workspace --locked --exclude platform_mac
+        run: cargo build --workspace --locked --exclude platform_mac --exclude api_cli
 
       - name: Build (all targets) - macOS
         if: runner.os == 'macOS'
@@ -51,7 +51,7 @@ jobs:
 
       - name: Run tests - Windows
         if: runner.os == 'Windows'
-        run: cargo test --workspace --locked --no-fail-fast --exclude platform_mac
+        run: cargo test --workspace --locked --no-fail-fast --exclude platform_mac --exclude api_cli
 
       - name: Run tests - macOS
         if: runner.os == 'macOS'
@@ -59,7 +59,7 @@ jobs:
 
       - name: Doc build (no deploy) - Windows
         if: runner.os == 'Windows'
-        run: cargo doc --workspace --no-deps --locked --exclude platform_mac
+        run: cargo doc --workspace --no-deps --locked --exclude platform_mac --exclude api_cli
 
       - name: Doc build (no deploy) - macOS
         if: runner.os == 'macOS'
@@ -96,7 +96,7 @@ jobs:
 
       - name: Clippy - Windows
         if: runner.os == 'Windows'
-        run: cargo clippy --workspace --all-features --exclude platform_mac -- -D warnings
+        run: cargo clippy --workspace --all-features --exclude platform_mac --exclude api_cli -- -D warnings
 
       - name: Clippy - macOS
         if: runner.os == 'macOS'
