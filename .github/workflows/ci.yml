@@ -41,21 +41,21 @@ jobs:
       - name: Show rustc version
         run: rustc -Vv
 
-      - name: Build (all targets)
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cargo build --workspace --locked --exclude platform_mac
-          else
-            cargo build --workspace --all-targets --all-features --locked
-          fi
+      - name: Build (all targets) - Windows
+        if: runner.os == 'Windows'
+        run: cargo build --workspace --locked --exclude platform_mac
 
-      - name: Run tests
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cargo test --workspace --locked --no-fail-fast --exclude platform_mac
-          else
-            cargo test --workspace --all-features --locked --no-fail-fast
-          fi
+      - name: Build (all targets) - macOS
+        if: runner.os == 'macOS'
+        run: cargo build --workspace --all-targets --all-features --locked
+
+      - name: Run tests - Windows
+        if: runner.os == 'Windows'
+        run: cargo test --workspace --locked --no-fail-fast --exclude platform_mac
+
+      - name: Run tests - macOS
+        if: runner.os == 'macOS'
+        run: cargo test --workspace --all-features --locked --no-fail-fast
 
       - name: Doc build (no deploy)
         run: cargo doc --workspace --no-deps --locked
