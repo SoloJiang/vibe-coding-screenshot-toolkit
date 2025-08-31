@@ -12,6 +12,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
+// Mock 截图常量
+const MOCK_SCREENSHOT_WIDTH: u32 = 800;
+const MOCK_SCREENSHOT_HEIGHT: u32 = 600;
+const MOCK_SCREENSHOT_GRAY_VALUE: u8 = 200;
+const MOCK_SCREENSHOT_ALPHA: u8 = 255;
+
 #[derive(Parser)]
 #[command(author, version, about = "Screenshot Tool Dev CLI", long_about = None)]
 struct Cli {
@@ -109,14 +115,14 @@ struct CaptureInteractiveArgs {
 
 fn build_mock_screenshot() -> Screenshot {
     // 生成简单纯灰底图 (800x600)
-    let w = 800u32;
-    let h = 600u32;
+    let w = MOCK_SCREENSHOT_WIDTH;
+    let h = MOCK_SCREENSHOT_HEIGHT;
     let mut bytes = vec![0u8; (w * h * 4) as usize];
     for p in bytes.chunks_exact_mut(4) {
-        p[0] = 200;
-        p[1] = 200;
-        p[2] = 200;
-        p[3] = 255;
+        p[0] = MOCK_SCREENSHOT_GRAY_VALUE;
+        p[1] = MOCK_SCREENSHOT_GRAY_VALUE;
+        p[2] = MOCK_SCREENSHOT_GRAY_VALUE;
+        p[3] = MOCK_SCREENSHOT_ALPHA;
     }
     let frame = Frame {
         width: w,
@@ -145,15 +151,13 @@ fn crop_screenshot(src: &Screenshot, x: u32, y: u32, w: u32, h: u32) -> Screensh
     let w = x2 - x;
     let h = y2 - y;
     let mut bytes = vec![0u8; (w * h * 4) as usize];
-    copy_rgba_region(
-        &src_frame.bytes,
-        w0,
-        x,
-        y,
-        w,
-        h,
-        &mut bytes,
-    );
+    for row in 0..h {
+        for col in 0..w {
+            let src_i = (((y + row) * w0 + (x + col)) * 4) as usize;
+            let dst_i = ((row * w + col) * 4) as usize;
+            bytes[dst_i..dst_i + 4].copy_from_slice(&src_frame.bytes[src_i..src_i + 4]);
+        }
+    }
     let frame = Frame {
         width: w,
         height: h,

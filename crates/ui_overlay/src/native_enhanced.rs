@@ -15,6 +15,17 @@ use std::process::Command;
 pub struct EnhancedNativeSelector {}
 
 impl EnhancedNativeSelector {
+    // 区域大小阈值常量
+    const SMALL_REGION_THRESHOLD: f32 = 0.3; // 小区域阈值：屏幕宽度/高度的30%
+    const LARGE_REGION_THRESHOLD: f32 = 0.8; // 大区域阈值：屏幕宽度/高度的80%
+
+    // 位置调整因子常量
+    const CENTER_LEFT_FACTOR: f32 = 0.4; // 小区域中心偏左的因子
+    const CENTER_TOP_FACTOR: f32 = 0.4; // 小区域中心偏上的因子
+    const FULLSCREEN_LEFT_FACTOR: f32 = 0.1; // 大区域左边距因子
+    const FULLSCREEN_TOP_FACTOR: f32 = 0.1; // 大区域上边距因子
+    const CENTER_FACTOR: f32 = 0.5; // 居中因子
+
     pub fn new() -> Self {
         Self {}
     }

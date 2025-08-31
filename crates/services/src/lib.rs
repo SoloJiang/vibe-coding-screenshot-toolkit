@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
+// 缩略图生成常量
+const THUMBNAIL_MAX_SIZE: u32 = 240; // 缩略图最长边像素数
+
 pub trait Capturer: Send + Sync {
     fn capture_full(&self) -> anyhow::Result<Screenshot>;
 }
@@ -339,7 +342,7 @@ impl<CP: Clipboard> ExportService<CP> {
     fn generate_thumbnail(&self, png_bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
         let img = image::load_from_memory(png_bytes)?;
         let (w, h) = img.dimensions();
-        let max_side = 240u32;
+        let max_side = THUMBNAIL_MAX_SIZE;
         let scale = (max_side as f32 / w.max(h) as f32).min(1.0);
         let nw = (w as f32 * scale).round() as u32;
         let nh = (h as f32 * scale).round() as u32;
@@ -479,14 +482,9 @@ impl OcrService {
                 }
             });
         }
-        Self { tx, shutdown_flag }
+        Self { tx }
     }
 
-    pub fn shutdown(&self) {
-        self.shutdown_flag.store(true, Ordering::SeqCst);
-        // Dropping tx will close the channel and unblock threads
-        // (if OcrService is owned, this will happen automatically on drop)
-    }
     pub fn recognize_async(
         &self,
         bytes: Vec<u8>,
