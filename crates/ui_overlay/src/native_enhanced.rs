@@ -122,26 +122,26 @@ impl EnhancedNativeSelector {
         // 1. 如果选择区域很小，可能是在屏幕中心附近
         // 2. 如果选择区域很大，可能占据了大部分屏幕
 
-        let x = if width < screen_width * 0.3 {
+        let x = if width < screen_width * Self::SMALL_REGION_THRESHOLD {
             // 小区域，放在中心偏左
-            (screen_width - width) * 0.4
-        } else if width > screen_width * 0.8 {
+            (screen_width - width) * Self::CENTER_LEFT_FACTOR
+        } else if width > screen_width * Self::LARGE_REGION_THRESHOLD {
             // 大区域，可能是全屏或接近全屏
-            (screen_width - width) * 0.1
+            (screen_width - width) * Self::FULLSCREEN_LEFT_FACTOR
         } else {
             // 中等区域，居中
-            (screen_width - width) * 0.5
+            (screen_width - width) * Self::CENTER_FACTOR
         };
 
-        let y = if height < screen_height * 0.3 {
+        let y = if height < screen_height * Self::SMALL_REGION_THRESHOLD {
             // 小区域，放在中心偏上
-            (screen_height - height) * 0.4
-        } else if height > screen_height * 0.8 {
+            (screen_height - height) * Self::CENTER_TOP_FACTOR
+        } else if height > screen_height * Self::LARGE_REGION_THRESHOLD {
             // 大区域，可能是全屏或接近全屏
-            (screen_height - height) * 0.1
+            (screen_height - height) * Self::FULLSCREEN_TOP_FACTOR
         } else {
             // 中等区域，居中
-            (screen_height - height) * 0.5
+            (screen_height - height) * Self::CENTER_FACTOR
         };
 
         Rect::new(x, y, width, height)
