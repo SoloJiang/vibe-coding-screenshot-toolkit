@@ -175,7 +175,7 @@ impl EnhancedNativeSelector {
             if line.contains("Resolution:") {
                 // 查找类似 "Resolution: 1920 x 1080" 的行
                 if let Some(resolution_part) = line.split("Resolution:").nth(1) {
-                    let parts: Vec<&str> = resolution_part.trim().split_whitespace().collect();
+                    let parts: Vec<&str> = resolution_part.split_whitespace().collect();
                     if parts.len() >= 3 {
                         if let (Ok(width), Ok(height)) =
                             (parts[0].parse::<f32>(), parts[2].parse::<f32>())

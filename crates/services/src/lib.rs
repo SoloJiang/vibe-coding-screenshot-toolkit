@@ -337,7 +337,7 @@ impl<CP: Clipboard> ExportService<CP> {
 
 impl<CP: Clipboard> ExportService<CP> {
     fn generate_thumbnail(&self, png_bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
-        let img = image::load_from_memory(png_bytes)?; // DynamicImage
+        let img = image::load_from_memory(png_bytes)?;
         let (w, h) = img.dimensions();
         let max_side = 240u32;
         let scale = (max_side as f32 / w.max(h) as f32).min(1.0);
@@ -439,17 +439,23 @@ pub fn gen_file_name(template: &str, screen_index: usize) -> String {
 }
 
 // ---- Future Expansion Stubs (OCR / Privacy) ----
+
+/// OCR 请求消息
+pub struct OcrRequest {
+    /// 图像的 PNG 字节
+    pub image_bytes: Vec<u8>,
+    /// 用于回传 OCR 结果的通道
+    pub response_tx: std::sync::mpsc::Sender<CoreResult<Vec<String>>>,
+}
+
 /// 占位：OCR 服务（后续实现线程池 + tesseract 适配器）
 pub struct OcrService {
     // 简单线程执行器 (占位)：mpsc 任务队列 + 工作线程
-    tx: std::sync::mpsc::Sender<(Vec<u8>, std::sync::mpsc::Sender<CoreResult<Vec<String>>>)>,
+    tx: std::sync::mpsc::Sender<OcrRequest>,
 }
 impl OcrService {
     pub fn new(worker_threads: usize) -> Self {
-        let (tx, rx) = std::sync::mpsc::channel::<(
-            Vec<u8>,
-            std::sync::mpsc::Sender<CoreResult<Vec<String>>>,
-        )>();
+        let (tx, rx) = std::sync::mpsc::channel::<OcrRequest>();
         let shared = std::sync::Arc::new(std::sync::Mutex::new(rx));
         let threads = worker_threads.max(1);
         for _ in 0..threads {
@@ -460,10 +466,13 @@ impl OcrService {
                     guard.recv()
                 };
                 match msg {
-                    Ok((data, reply_tx)) => {
-                        let _ = reply_tx.send(Err(screenshot_core::Error::new(
+                    Ok(OcrRequest {
+                        image_bytes,
+                        response_tx,
+                    }) => {
+                        let _ = response_tx.send(Err(screenshot_core::Error::new(
                             screenshot_core::ErrorKind::Unsupported,
-                            format!("ocr not implemented ({} bytes)", data.len()),
+                            format!("ocr not implemented ({} bytes)", image_bytes.len()),
                         )));
                     }
                     Err(_) => break,
@@ -477,8 +486,12 @@ impl OcrService {
         &self,
         bytes: Vec<u8>,
     ) -> CoreResult<std::sync::mpsc::Receiver<CoreResult<Vec<String>>>> {
-        let (rtx, rrx) = std::sync::mpsc::channel();
-        self.tx.send((bytes, rtx)).map_err(|e| {
+        let (response_tx, rrx) = std::sync::mpsc::channel();
+        let req = OcrRequest {
+            image_bytes: bytes,
+            response_tx,
+        };
+        self.tx.send(req).map_err(|e| {
             screenshot_core::Error::new(screenshot_core::ErrorKind::Unknown, e.to_string())
         })?;
         Ok(rrx)
@@ -496,11 +509,11 @@ pub struct PrivacyService {
 impl PrivacyService {
     pub fn new() -> Self {
         Self {
-            email_re: regex::Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap(),
-            phone_re: regex::Regex::new(r"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b").unwrap(),
-            url_re: regex::Regex::new(r"https?://[A-Za-z0-9._~:/?#%[\\]@!$&'()*+,;=-]+").unwrap(),
-            ipv4_re: regex::Regex::new(r"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b").unwrap(),
-            cn_mobile_re: regex::Regex::new(r"\b1[3-9]\\d{9}\b").unwrap(),
+            email_re: regex::Regex::new(r#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#).unwrap(),
+            phone_re: regex::Regex::new(r#"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b"#).unwrap(),
+            url_re: regex::Regex::new(r#"https?://[A-Za-z0-9._~:/?#%\\\[\\\]@!$&'()*+,;=-]+"#).unwrap(),
+            ipv4_re: regex::Regex::new(r#"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b"#).unwrap(),
+            cn_mobile_re: regex::Regex::new(r#"\b1[3-9]\d{9}\b"#).unwrap(),
         }
     }
     /// 返回命中区间 (start,end)
@@ -552,10 +565,16 @@ impl PrivacyService {
         for (s, e) in hits {
             for i in s..e {
                 if i < chars.len() {
-                    chars[i] = '*';
+                    chars[i] = '*' ;
                 }
             }
         }
         Ok(chars.into_iter().collect())
+    }
+}
+
+impl Default for PrivacyService {
+    fn default() -> Self {
+        Self::new()
     }
 }

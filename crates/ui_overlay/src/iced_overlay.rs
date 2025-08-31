@@ -4,17 +4,12 @@ use crate::{Point, Rect, RegionSelector, Result};
 use std::io::{self, Write};
 
 /// 选择状态
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum SelectionMode {
+    #[default]
     None,
     Creating,
     Selected,
-}
-
-impl Default for SelectionMode {
-    fn default() -> Self {
-        SelectionMode::None
-    }
 }
 
 /// 选区状态

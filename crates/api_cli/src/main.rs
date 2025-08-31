@@ -170,6 +170,42 @@ fn crop_screenshot(src: &Screenshot, x: u32, y: u32, w: u32, h: u32) -> Screensh
     }
 }
 
+/// 初始化历史服务和序列号
+fn init_history_and_sequence(out_dir: &std::path::Path) -> (Arc<std::sync::Mutex<HistoryService>>, std::path::PathBuf) {
+    let hist_dir = out_dir.join(".history");
+    let _ = ensure_directories(&[out_dir, &hist_dir]);
+    let history = Arc::new(std::sync::Mutex::new(
+        HistoryService::new(&hist_dir, 50).expect("history init"),
+    ));
+    {
+        let mut h = history.lock().unwrap();
+        let _ = h.load_from_disk();
+    }
+
+    // 读取序列 (seq.txt: YYYYMMDD last_value)
+    let seq_file = hist_dir.join("seq.txt");
+    if let Ok(txt) = std::fs::read_to_string(&seq_file) {
+        let parts: Vec<&str> = txt.trim().split_whitespace().collect();
+        if parts.len() == 2 {
+            if let Ok(v) = parts[1].parse::<u32>() {
+                screenshot_core::naming::set_sequence_for(parts[0], v);
+            }
+        }
+    }
+
+    (history, seq_file)
+}
+
+/// 写回序列号到文件
+fn save_sequence(seq_file: &std::path::Path) {
+    if let Some(parent) = seq_file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let day = chrono::Utc::now().format("%Y%m%d").to_string();
+    let curr = screenshot_core::naming::current_sequence();
+    let _ = std::fs::write(seq_file, format!("{} {}\n", day, curr));
+}
+
 fn main() {
     let cli = Cli::parse();
     match cli.command {
@@ -179,26 +215,9 @@ fn main() {
         Some(Commands::Capture(args)) => {
             #[cfg(target_os = "macos")]
             {
-                // 初始化输出与 history 目录 (默认输出目录/.history)
-                let hist_dir = args.out_dir.join(".history");
-                let _ = ensure_directories(&[&args.out_dir, &hist_dir]);
-                let history = Arc::new(std::sync::Mutex::new(
-                    HistoryService::new(&hist_dir, 50).expect("history init"),
-                ));
-                {
-                    let mut h = history.lock().unwrap();
-                    let _ = h.load_from_disk();
-                }
-                // 读取序列 (seq.txt: YYYYMMDD last_value)
-                let seq_file = hist_dir.join("seq.txt");
-                if let Ok(txt) = std::fs::read_to_string(&seq_file) {
-                    let parts: Vec<&str> = txt.trim().split_whitespace().collect();
-                    if parts.len() == 2 {
-                        if let Ok(v) = parts[1].parse::<u32>() {
-                            screenshot_core::naming::set_sequence_for(parts[0], v);
-                        }
-                    }
-                }
+                // 初始化历史和序列号
+                let (history, seq_file) = init_history_and_sequence(&args.out_dir);
+
                 #[cfg(target_os = "macos")]
                 let export = {
                     use platform_mac::MacClipboard;
@@ -210,7 +229,7 @@ fn main() {
                 let export_one = |shot: &Screenshot, idx: usize| {
                     let fname = gen_file_name(&args.template, idx) + ".png";
                     let path = args.out_dir.join(&fname);
-                    match export.export_png_to_file(&shot, &[], &path) {
+                    match export.export_png_to_file(shot, &[], &path) {
                         Ok(_) => println!("{}", path.display()),
                         Err(e) => eprintln!("导出 {fname} 失败: {e}"),
                     }
@@ -248,22 +267,24 @@ fn main() {
                     export_one(&shot, 0);
                 }
                 // 写回序列
-                if let Some(parent) = seq_file.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let day = chrono::Utc::now().format("%Y%m%d").to_string();
-                let curr = screenshot_core::naming::current_sequence();
-                let _ = std::fs::write(&seq_file, format!("{} {}\n", day, curr));
+                save_sequence(&seq_file);
             }
             #[cfg(not(target_os = "macos"))]
             {
+                // 初始化历史和序列号
+                let (history, seq_file) = init_history_and_sequence(&args.out_dir);
+
                 let shot = build_mock_screenshot();
                 let fname = gen_file_name(&args.template, 0) + ".png";
                 let path = args.out_dir.join(fname);
-                let export = ExportService::new(Arc::new(StubClipboard));
+                let export = ExportService::new(Arc::new(StubClipboard)).with_history(history.clone());
                 export
                     .export_png_to_file(&shot, &[], &path)
                     .expect("export");
+
+                // 写回序列
+                save_sequence(&seq_file);
+
                 println!("{}", path.display());
             }
         }
@@ -316,26 +337,9 @@ fn main() {
             let sub = crop_screenshot(&base, parts[0], parts[1], parts[2], parts[3]);
             let fname = gen_file_name(&args.template, 0) + ".png";
             let path = args.out_dir.join(fname);
-            // Reuse history dir
-            let hist_dir = args.out_dir.join(".history");
-            let _ = ensure_directories(&[&args.out_dir, &hist_dir]);
-            let history = Arc::new(std::sync::Mutex::new(
-                HistoryService::new(&hist_dir, 50).expect("history init"),
-            ));
-            {
-                let mut h = history.lock().unwrap();
-                let _ = h.load_from_disk();
-            }
-            // 读取序列
-            let seq_file = hist_dir.join("seq.txt");
-            if let Ok(txt) = std::fs::read_to_string(&seq_file) {
-                let parts: Vec<&str> = txt.trim().split_whitespace().collect();
-                if parts.len() == 2 {
-                    if let Ok(v) = parts[1].parse::<u32>() {
-                        screenshot_core::naming::set_sequence_for(parts[0], v);
-                    }
-                }
-            }
+            // 初始化历史和序列号
+            let (history, seq_file) = init_history_and_sequence(&args.out_dir);
+
             #[cfg(target_os = "macos")]
             let export = {
                 use platform_mac::MacClipboard;
@@ -344,13 +348,9 @@ fn main() {
             #[cfg(not(target_os = "macos"))]
             let export = ExportService::new(Arc::new(StubClipboard)).with_history(history.clone());
             export.export_png_to_file(&sub, &[], &path).expect("export");
+
             // 写回序列
-            if let Some(parent) = seq_file.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let day = chrono::Utc::now().format("%Y%m%d").to_string();
-            let curr = screenshot_core::naming::current_sequence();
-            let _ = std::fs::write(&seq_file, format!("{} {}\n", day, curr));
+            save_sequence(&seq_file);
             println!("{}", path.display());
         }
         Some(Commands::Metrics) => {
