@@ -15,8 +15,11 @@ env:
 
 jobs:
   build-and-test:
-    name: Build & Test (stable)
-    runs-on: ubuntu-latest
+    name: Build & Test
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,11 +34,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -54,7 +52,7 @@ jobs:
 
   lint:
     name: Format & Clippy
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,11 +68,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev pkg-config
-
       - name: Setup Rust toolchain (clippy, rustfmt)
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -88,7 +81,7 @@ jobs:
 
   minimal:
     name: Minimal features compile
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -101,9 +94,5 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev pkg-config
       - name: Build default feature set
         run: cargo build --workspace --locked
