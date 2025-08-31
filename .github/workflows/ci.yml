@@ -42,10 +42,20 @@ jobs:
         run: rustc -Vv
 
       - name: Build (all targets)
-        run: cargo build --workspace --all-targets --all-features --locked
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cargo build --workspace --locked --exclude platform_mac
+          else
+            cargo build --workspace --all-targets --all-features --locked
+          fi
 
       - name: Run tests
-        run: cargo test --workspace --all-features --locked --no-fail-fast
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cargo test --workspace --locked --no-fail-fast --exclude platform_mac
+          else
+            cargo test --workspace --all-features --locked --no-fail-fast
+          fi
 
       - name: Doc build (no deploy)
         run: cargo doc --workspace --no-deps --locked

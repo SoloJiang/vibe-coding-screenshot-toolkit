@@ -167,9 +167,9 @@ mod ts_millis {
         D: Deserializer<'de>,
     {
         let ms = i64::deserialize(d)?;
-        Ok(Utc
+        Utc
             .timestamp_millis_opt(ms)
             .single()
-            .ok_or_else(|| serde::de::Error::custom("invalid millis"))?)
+            .ok_or_else(|| serde::de::Error::custom("invalid millis"))
     }
 }
