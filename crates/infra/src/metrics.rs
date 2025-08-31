@@ -84,6 +84,10 @@ impl MetricsRegistry {
                 return c;
             }
         }
+        // NOTE: We intentionally leak memory here to provide a 'static reference for global metrics.
+        // This is acceptable for long-lived applications, but in tests or short-lived processes,
+        // consider using a non-leaking registry or resetting metrics between runs.
+        // See also: https://github.com/rust-lang/rust/issues/27709
         let boxed: &'static Counter = Box::leak(Box::new(Counter::default()));
         let mut map = map_lock.lock().unwrap();
         map.insert(name, boxed);
