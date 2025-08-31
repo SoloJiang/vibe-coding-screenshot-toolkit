@@ -479,9 +479,14 @@ impl OcrService {
                 }
             });
         }
-        Self { tx }
+        Self { tx, shutdown_flag }
     }
 
+    pub fn shutdown(&self) {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        // Dropping tx will close the channel and unblock threads
+        // (if OcrService is owned, this will happen automatically on drop)
+    }
     pub fn recognize_async(
         &self,
         bytes: Vec<u8>,
