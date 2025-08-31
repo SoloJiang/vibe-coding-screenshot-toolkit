@@ -57,7 +57,6 @@ impl Clipboard for MacClipboard {
 /// macOS 捕获器：优先使用 xcap（基于 CG），若失败再回退系统 screencapture 命令。
 /// 回退逻辑：xcap 报错或返回空 -> screencapture；二者都失败则返回错误。
 /// 注意：首次运行需在“系统设置 -> 隐私与安全性 -> 屏幕录制”授予终端权限。
-
 pub struct MacCapturer;
 impl MacCapturer {
     /// 捕获主显示器截图。优先 xcap，失败回退 screencapture。

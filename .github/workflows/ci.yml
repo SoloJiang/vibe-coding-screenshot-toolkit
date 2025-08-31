@@ -67,7 +67,10 @@ jobs:
 
   lint:
     name: Format & Clippy
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,7 +94,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Clippy
+      - name: Clippy - Windows
+        if: runner.os == 'Windows'
+        run: cargo clippy --workspace --all-features --exclude platform_mac -- -D warnings
+
+      - name: Clippy - macOS
+        if: runner.os == 'macOS'
         run: cargo clippy --workspace --all-features -- -D warnings
 
   minimal:
