@@ -145,13 +145,15 @@ fn crop_screenshot(src: &Screenshot, x: u32, y: u32, w: u32, h: u32) -> Screensh
     let w = x2 - x;
     let h = y2 - y;
     let mut bytes = vec![0u8; (w * h * 4) as usize];
-    for row in 0..h {
-        for col in 0..w {
-            let src_i = (((y + row) * w0 + (x + col)) * 4) as usize;
-            let dst_i = ((row * w + col) * 4) as usize;
-            bytes[dst_i..dst_i + 4].copy_from_slice(&src_frame.bytes[src_i..src_i + 4]);
-        }
-    }
+    copy_rgba_region(
+        &src_frame.bytes,
+        w0,
+        x,
+        y,
+        w,
+        h,
+        &mut bytes,
+    );
     let frame = Frame {
         width: w,
         height: h,
