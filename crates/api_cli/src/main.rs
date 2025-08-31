@@ -171,7 +171,9 @@ fn crop_screenshot(src: &Screenshot, x: u32, y: u32, w: u32, h: u32) -> Screensh
 }
 
 /// 初始化历史服务和序列号
-fn init_history_and_sequence(out_dir: &std::path::Path) -> (Arc<std::sync::Mutex<HistoryService>>, std::path::PathBuf) {
+fn init_history_and_sequence(
+    out_dir: &std::path::Path,
+) -> (Arc<std::sync::Mutex<HistoryService>>, std::path::PathBuf) {
     let hist_dir = out_dir.join(".history");
     let _ = ensure_directories(&[out_dir, &hist_dir]);
     let history = Arc::new(std::sync::Mutex::new(
@@ -185,7 +187,7 @@ fn init_history_and_sequence(out_dir: &std::path::Path) -> (Arc<std::sync::Mutex
     // 读取序列 (seq.txt: YYYYMMDD last_value)
     let seq_file = hist_dir.join("seq.txt");
     if let Ok(txt) = std::fs::read_to_string(&seq_file) {
-        let parts: Vec<&str> = txt.trim().split_whitespace().collect();
+        let parts: Vec<&str> = txt.split_whitespace().collect();
         if parts.len() == 2 {
             if let Ok(v) = parts[1].parse::<u32>() {
                 screenshot_core::naming::set_sequence_for(parts[0], v);
@@ -277,7 +279,8 @@ fn main() {
                 let shot = build_mock_screenshot();
                 let fname = gen_file_name(&args.template, 0) + ".png";
                 let path = args.out_dir.join(fname);
-                let export = ExportService::new(Arc::new(StubClipboard)).with_history(history.clone());
+                let export =
+                    ExportService::new(Arc::new(StubClipboard)).with_history(history.clone());
                 export
                     .export_png_to_file(&shot, &[], &path)
                     .expect("export");

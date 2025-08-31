@@ -509,9 +509,11 @@ pub struct PrivacyService {
 impl PrivacyService {
     pub fn new() -> Self {
         Self {
-            email_re: regex::Regex::new(r#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#).unwrap(),
+            email_re: regex::Regex::new(r#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
+                .unwrap(),
             phone_re: regex::Regex::new(r#"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b"#).unwrap(),
-            url_re: regex::Regex::new(r#"https?://[A-Za-z0-9._~:/?#%\\\[\\\]@!$&'()*+,;=-]+"#).unwrap(),
+            url_re: regex::Regex::new(r#"https?://[A-Za-z0-9._~:/?#%\\\[\\\]@!$&'()*+,;=-]+"#)
+                .unwrap(),
             ipv4_re: regex::Regex::new(r#"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b"#).unwrap(),
             cn_mobile_re: regex::Regex::new(r#"\b1[3-9]\d{9}\b"#).unwrap(),
         }
@@ -565,7 +567,7 @@ impl PrivacyService {
         for (s, e) in hits {
             for i in s..e {
                 if i < chars.len() {
-                    chars[i] = '*' ;
+                    chars[i] = '*';
                 }
             }
         }

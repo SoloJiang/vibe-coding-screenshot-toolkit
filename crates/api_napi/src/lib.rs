@@ -5,6 +5,7 @@
 mod node_api {
     // 直接使用宏定义所在 crate，避免由于关闭 napi 默认特性导致的 re-export 丢失
     #[napi_derive::napi]
+    #[allow(dead_code)]
     pub fn version() -> String {
         env!("CARGO_PKG_VERSION").to_string()
     }
@@ -12,6 +13,7 @@ mod node_api {
 
 // 当未启用 feature 时，提供同名纯 Rust 函数，便于共享代码调用。
 #[cfg(not(feature = "node"))]
+#[allow(dead_code)]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

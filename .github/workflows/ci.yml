@@ -57,7 +57,12 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo test --workspace --all-features --locked --no-fail-fast
 
-      - name: Doc build (no deploy)
+      - name: Doc build (no deploy) - Windows
+        if: runner.os == 'Windows'
+        run: cargo doc --workspace --no-deps --locked --exclude platform_mac
+
+      - name: Doc build (no deploy) - macOS
+        if: runner.os == 'macOS'
         run: cargo doc --workspace --no-deps --locked
 
   lint:

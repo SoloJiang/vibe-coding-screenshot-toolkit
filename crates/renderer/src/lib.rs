@@ -741,7 +741,7 @@ mod tests {
         let frame = dummy_frame(6, 6);
         let img = r.render(&frame, &[a1, a2]);
         // Pixel (1,1) only red
-        let idx = ((1 * 6 + 1) * 4) as usize;
+        let idx = ((6 + 1) * 4) as usize;
         assert_eq!(&img.pixels[idx..idx + 4], [255, 0, 0, 255]);
         // Pixel (3,3) overlap blended
         let idx2 = ((3 * 6 + 3) * 4) as usize;
@@ -762,7 +762,7 @@ mod tests {
         // Corner outside stroke not drawn
         assert_eq!(&img.pixels[0..4], [0, 0, 0, 0]);
         // Stroke pixel at (1,1) should be red (allow some blend with fill interior at (2,2))
-        let idx = ((1 * 8 + 1) * 4) as usize;
+        let idx = ((8 + 1) * 4) as usize;
         let p = &img.pixels[idx..idx + 4];
         assert!(p[0] > 180 && p[1] < 80); // red dominance
     }
@@ -788,7 +788,7 @@ mod tests {
         };
         let frame = dummy_frame(4, 4);
         let img = r.render(&frame, &[base, highlight]);
-        let center = &img.pixels[((1 * 4 + 1) * 4) as usize..((1 * 4 + 1) * 4 + 4) as usize];
+        let center = &img.pixels[((4 + 1) * 4) as usize..((4 + 1) * 4 + 4) as usize];
         // Expect both red and blue channels > 0
         assert!(center[0] > 60 && center[2] > 60);
     }
@@ -883,7 +883,7 @@ mod tests {
         let img = r.render(&base, &[mosaic]);
         // Sample two pixels inside first block should be identical after mosaic
         let p1 = &img.pixels[0..4];
-        let p2 = &img.pixels[(1 * 4) as usize..(1 * 4 + 4) as usize];
+        let p2 = &img.pixels[4..8];
         assert_eq!(p1, p2);
         // Pixel far away should differ (different block)
         let p_far = &img.pixels[((10 * 16 + 10) * 4) as usize..((10 * 16 + 10) * 4 + 4) as usize];
@@ -1055,7 +1055,7 @@ mod tests {
         let mut solid_count = 0;
         let mut dashed_count = 0;
         for x in 0..64 {
-            let idx = ((0 * 64 + x) * 4) as usize;
+            let idx = (x * 4) as usize;
             let p = &img.pixels[idx..idx + 4];
             if p[1] > 150 {
                 solid_count += 1;
