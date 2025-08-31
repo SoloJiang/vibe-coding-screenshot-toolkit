@@ -1,9 +1,10 @@
 # core 模块技术设计
 
-(原内容迁移自 TechDesign_core.md，已转换为统一命名)
-
 ## 范围与职责
 提供截图/标注编辑核心领域模型与纯逻辑：Screenshot/Frame/Annotation/UndoStack/History 内存结构、错误类型、几何与对齐算法、命名模板解析、公共 trait（Renderer/ExportEncoder 接口定义）等。
+
+MVP 使用子集：AnnotationKind(Rect/Arrow/Text)，Undo 合并策略，HistoryItem + 裁剪，命名模板。
+延后启用：对齐吸附（若 UI 暂未集成可保留算法）、更多 AnnotationKind、性能基准、动态注册机制。
 
 ## 依赖与被依赖
 - 依赖：标准库、uuid、serde（模型序列化）、thiserror
@@ -42,8 +43,8 @@ ErrorKind: Permission, Capture, IO, Upload, Ocr, Hook, Config, Validation, Priva
 核心结构使用 Arc + 内部不做锁（编辑流程由上层串行保证）。
 
 ## 测试计划
-- 单元：Undo 合并策略；命名模板解析；吸附算法；错误映射；序列化往返
-- 基准：Undo push/merge 开销；命名模板解析 1000 次
+MVP：Undo 合并策略；命名模板解析；History 裁剪；Annotation 序列化基本往返。
+Later：吸附算法集成测试；性能基准 (Undo / 模板解析)；动态扩展注册。
 
 ## 风险与缓解
 | 风险 | 缓解 |

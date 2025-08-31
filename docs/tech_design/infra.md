@@ -1,5 +1,4 @@
 # infra 模块技术设计
-(迁移自 TechDesign_infra.md)
 
 ## 职责
 提供通用基础设施：事件总线、配置、日志、ID、Clock、LRU 缓存、命名模板、路径定位、Panic hook、SIMD 检测（后期）。
@@ -8,15 +7,9 @@
 serde, tracing, uuid, parking_lot (可选), regex.
 
 ## 组件
-- EventBus<E>: 基于 tokio::broadcast 封装 subscribe()/publish()
-- ConfigStore: load()/save(patch) 原子写 (temp + rename)
-- IdGenerator: uuid v7
-- Clock Trait: now()/unix_ms()
-- LruCache<K,V>
-- NamingTemplate: 与 core 模板兼容
-- PathResolver
-- Panic hook (debug)
-- CpuFeatures: 运行期指令集探测
+MVP 必需：PathResolver（含 history/output 目录）、NamingTemplate、LruCache（供 renderer/ocr 未来使用）、IdGenerator。
+可选（留存实现）：EventBus（MVP 可最小或空壳）、ConfigStore（若尚无配置读写则延后）、Clock Trait。
+延后：Panic hook、CpuFeatures 探测。
 
 ## 配置 Schema
 与总技术设计一致；validate(Config)->Result<()>。
@@ -31,7 +24,8 @@ RwLock, broadcast, Mutex LruCache。
 模板/正则缓存；LruCache O(1)。
 
 ## 测试
-Config 原子写、EventBus 压力、Lru 淘汰、CpuFeatures。
+MVP：Lru 淘汰；命名模板（若不复用 core 逻辑则至少覆盖 parse）。
+Later：Config 原子写、EventBus 压力、CpuFeatures。
 
 ## 风险
 | 风险 | 缓解 |

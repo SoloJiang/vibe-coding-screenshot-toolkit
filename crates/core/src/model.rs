@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -31,7 +32,8 @@ pub struct Screenshot {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+/// 元信息: 基础几何与通用属性
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnnotationMeta {
     pub id: Uuid,
     pub x: f32,
@@ -45,10 +47,13 @@ pub struct AnnotationMeta {
     pub stroke_width: Option<f32>,
     pub z: i32,
     pub locked: bool,
+    #[serde(with = "ts_millis")]
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+/// 标注类型及特有属性
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum AnnotationKind {
     Rect {
         corner_radius: u8,
@@ -74,20 +79,96 @@ pub enum AnnotationKind {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LineStyle {
     Solid,
     Dashed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BlendMode {
     Multiply,
     Screen,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Annotation {
     pub meta: AnnotationMeta,
     pub kind: AnnotationKind,
+}
+
+/// 历史条目 (内存结构) – TODO: 未来若持久化可单独拆文件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryItem {
+    pub id: Uuid,
+    pub path: String,
+    /// 可能是缩略图 PNG bytes（小尺寸）
+    pub thumb: Option<Vec<u8>>,
+    #[serde(with = "ts_millis")]
+    pub created_at: DateTime<Utc>,
+    pub title: Option<String>,
+    /// 版本占位, 便于未来演进 (序列化向前兼容)
+    pub version: u8,
+}
+
+/// 将新的 HistoryItem 推入集合，超过 capacity 自动裁剪最旧
+pub fn push_history_trim(list: &mut Vec<HistoryItem>, item: HistoryItem, capacity: usize) {
+    list.push(item);
+    if list.len() > capacity {
+        // 按创建时间倒序保留最近 capacity 个
+        list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        list.truncate(capacity);
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn trim_history_capacity() {
+        let mut v = Vec::new();
+        let now = Utc::now();
+        for i in 0..60u32 {
+            push_history_trim(
+                &mut v,
+                HistoryItem {
+                    id: Uuid::now_v7(),
+                    path: format!("/tmp/{}.png", i),
+                    thumb: None,
+                    created_at: now + Duration::seconds(i as i64),
+                    title: None,
+                    version: 1,
+                },
+                50,
+            );
+        }
+        assert_eq!(v.len(), 50);
+        // 确保都是最新 50 条 (最大 created_at - 最小 created_at == 49s)
+        let max = v.iter().map(|h| h.created_at).max().unwrap();
+        let min = v.iter().map(|h| h.created_at).min().unwrap();
+        assert_eq!((max - min).num_seconds(), 49);
+    }
+}
+
+// serde helper for DateTime<Utc> as millis
+mod ts_millis {
+    use chrono::{DateTime, TimeZone, Utc};
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    pub fn serialize<S>(dt: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        s.serialize_i64(dt.timestamp_millis())
+    }
+    pub fn deserialize<'de, D>(d: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let ms = i64::deserialize(d)?;
+        Utc.timestamp_millis_opt(ms)
+            .single()
+            .ok_or_else(|| serde::de::Error::custom("invalid millis"))
+    }
 }

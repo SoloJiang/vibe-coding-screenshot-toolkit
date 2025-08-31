@@ -1,8 +1,10 @@
 # ocr_adapter 模块技术设计
-(迁移自 TechDesign_ocr_adapter.md)
 
 ## 职责
 封装 tesseract：初始化、预处理、识别、缓存。
+
+## MVP 状态
+OCR 整体延后，不在 MVP 实现；保留设计文档与TODO。
 
 ## 预处理
 resize_if_large -> 灰度 -> OTSU -> 中值去噪。

@@ -7,6 +7,7 @@ members = [
     "crates/renderer",
     "crates/services",
     "crates/ocr_adapter",
+    "crates/ui_overlay",
     "crates/privacy",
     "crates/api_napi",
     "crates/api_cli",
@@ -29,5 +30,6 @@ thiserror = "1"
 anyhow = "1"
 parking_lot = "0.12"
 smallvec = "1"
-chrono = { version = "0.4", features=["clock"] }
+chrono = { version = "0.4", features=["clock","serde"] }
 regex = "1"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
