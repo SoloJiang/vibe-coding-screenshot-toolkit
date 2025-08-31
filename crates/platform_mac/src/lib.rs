@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 #[macro_use]
 extern crate objc;
 use anyhow::{Context, Result};
