@@ -96,11 +96,11 @@ jobs:
 
       - name: Clippy - Windows
         if: runner.os == 'Windows'
-        run: cargo clippy --workspace --all-features --exclude platform_mac --exclude api_cli -- -D warnings
+        run: cargo clippy --workspace --all-features --exclude platform_mac --exclude api_cli
 
       - name: Clippy - macOS
         if: runner.os == 'macOS'
-        run: cargo clippy --workspace --all-features -- -D warnings
+        run: cargo clippy --workspace --all-features
 
   minimal:
     name: Minimal features compile

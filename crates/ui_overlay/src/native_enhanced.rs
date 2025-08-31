@@ -4,6 +4,7 @@
 //! 并在此基础上集成 Iced 的渲染能力来增强用户体验。
 
 use crate::{Rect, RegionSelector, Result};
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 /// 增强的原生截图选择器
