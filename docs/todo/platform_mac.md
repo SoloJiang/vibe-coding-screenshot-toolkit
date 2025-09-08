@@ -1,15 +1,16 @@
 # platform_mac 模块 todo
 
 ## MVP
-- ✅ 全屏捕获(主显示器)：xcap 优先 + 回退 screencapture
+- ✅ 全屏捕获(主显示器)：xcap
 - ✅ 多显示器初步支持：capture_all() 分别输出多文件 (CLI --all)
 - 待做：权限检测 ensure_screen_capture（当前仅错误信息提示）
-- 待做：剪贴板写入 PNG
+- ✅ 剪贴板写入 PNG
+- ✅ 自研框选 UI 集成：一次全屏 + 交互返回 Region 后内存裁剪
 
 ## m2
 - [ ] ScreenCaptureKit 检测与集成
 - [ ] 窗口捕获 (基于 xcap + ScreenCaptureKit)
-- [ ] 自研框选 UI 集成 (替换 screencapture -R/-i) 基础：矩形选择 + Esc 取消
+- [x] 自研框选 UI 集成 (替换 screencapture -R/-i) 基础：矩形选择 + Esc 取消
 - [ ] 多显示器坐标统一 & scale
 - [ ] 快捷键注册 (全局启动框选)
 - [ ] 权限检测 ensure_screen_capture

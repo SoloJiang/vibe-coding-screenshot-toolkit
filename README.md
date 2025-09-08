@@ -18,9 +18,9 @@ crates/
   infra/          # Infrastructure: metrics, panic hook, LRU cache, path resolution
   renderer/       # CPU RGBA composition, blend modes, shape rendering
   services/       # Business logic orchestration (capture, annotate, export, history)
-  platform_mac/   # macOS capture via xcap + screencapture, clipboard integration  
+  platform_mac/   # macOS capture via xcap, clipboard integration
   platform_win/   # Windows capture (placeholder/stub for now)
-  ui_overlay/     # Self-developed region selector with Iced GUI framework
+  ui_overlay/     # Self-developed region selector
   api_cli/        # CLI interface with capture commands and interactive selection
   api_napi/       # Node.js bindings (placeholder for future)
   ocr_adapter/    # OCR integration (planned)
@@ -41,10 +41,10 @@ Build only renderer crate:
 ```sh
 cargo build -p renderer
 ```
-### MVP Status (2025-08) ✅ COMPLETED
-Implemented end-to-end loop with full feature set:
-- **Capture**: Full screen & region capture (macOS native via xcap + screencapture fallback, multi-monitor support with `--all`)
-- **Interactive Selection**: Self-developed region selector with Iced-based GUI (replaces screencapture -i)
+### MVP Status
+Implemented end-to-end loop for core/renderer/export; region selection interface is present, custom GUI is the only target (no native fallback):
+- **Capture**: Full screen & region capture (via xcap; multi-monitor support with `--all`)
+- **Interactive Selection**: Region selection via custom GUI (planned; interface present)
 - **Annotations**: Rect / Arrow / Text + Undo/Redo + z-order manipulation (all undoable)
 - **Export**: PNG to file & macOS clipboard (NSPasteboard), JPEG support built-in
 - **Naming**: Template `{date},{seq},{screen}` with cross-process persistent daily sequence
@@ -66,10 +66,10 @@ Region capture:
 cargo run -p api_cli -- capture-region --rect 100,120,400,300 -d shots
 ```
 
-Interactive selection (Self-developed UI):
+Interactive selection:
 ```sh
-cargo run -p api_cli -- capture-interactive -d shots --selector native  # Enhanced native selector
-cargo run -p api_cli -- capture-interactive -d shots --selector gui    # Pure GUI selector
+cargo run -p api_cli -- capture-interactive -d shots
+# GUI selector only; current build provides the interface (GUI implementation planned)
 ```
 
 Mock mode (for testing without screen permissions):
@@ -104,8 +104,8 @@ Optional (future) features:
 - [x] Core / Renderer foundation
 - [x] Basic annotations: Rect / Arrow / Text with Undo/Redo
 - [x] Advanced annotations: Highlight / Mosaic / Freehand / Dashed strokes
-- [x] PNG & JPEG export with quality control  
-- [x] Interactive region selection with self-developed GUI
+- [x] PNG & JPEG export with quality control
+- [ ] Interactive region selection GUI (planned)
 - [x] Multi-monitor capture support
 - [x] Cross-process sequence persistence
 - [x] History system with thumbnails

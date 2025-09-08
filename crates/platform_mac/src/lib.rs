@@ -5,16 +5,12 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use cocoa::base::{id, nil};
 use cocoa::foundation::{NSData, NSString};
-use image::GenericImageView;
 use objc::rc::autoreleasepool;
 use objc::{class, msg_send, sel};
 use screenshot_core::Result as CoreResult;
 use screenshot_core::{Frame, FrameSet, PixelFormat, Screenshot};
 use services::Clipboard;
-use std::io::Read;
-use std::process::Command;
 use std::sync::Arc;
-use tempfile::NamedTempFile;
 use ui_overlay as _; // 引入 crate 以便泛型约束解析
 use uuid::Uuid;
 
@@ -60,16 +56,9 @@ impl Clipboard for MacClipboard {
 /// 注意：首次运行需在“系统设置 -> 隐私与安全性 -> 屏幕录制”授予终端权限。
 pub struct MacCapturer;
 impl MacCapturer {
-    /// 捕获主显示器截图。优先 xcap，失败回退 screencapture。
+    /// 捕获主显示器截图（仅 xcap）。
     pub fn capture_full() -> Result<Screenshot> {
-        match Self::capture_with_xcap() {
-            Ok(s) => Ok(s),
-            Err(e) => {
-                tracing::warn!(error = %e, "xcap 捕获失败, 回退 screencapture");
-                Self::capture_with_screencapture()
-                    .with_context(|| format!("fallback screencapture 也失败，原始 xcap 错误: {e}"))
-            }
-        }
+        Self::capture_with_xcap()
     }
 
     /// 捕获所有显示器；对单个显示器失败仅记录 warning，若全部失败返回错误。
@@ -109,76 +98,33 @@ impl MacCapturer {
         Ok(Self::build_screenshot(width, height, rgba))
     }
 
-    fn capture_with_screencapture() -> Result<Screenshot> {
-        let tmp = NamedTempFile::new()?;
-        let path = tmp.path().to_path_buf();
-        let status = Command::new("screencapture")
-            .arg("-x")
-            .arg(&path)
-            .status()
-            .context("执行 screencapture 命令失败")?;
-        if !status.success() {
-            anyhow::bail!("screencapture 退出状态非 0 (可能未授权)");
-        }
-        let mut bytes = Vec::new();
-        std::fs::File::open(&path)
-            .context("打开临时截图文件失败")?
-            .read_to_end(&mut bytes)
-            .context("读取临时截图文件失败")?;
-        let img = image::load_from_memory(&bytes).context("解析截图为图像失败")?;
-        let (w, h) = img.dimensions();
-        let rgba = img.to_rgba8().into_raw();
-        Ok(Self::build_screenshot(w, h, rgba))
-    }
+    // 移除 screencapture 相关路径：区域/交互均改为基于一次全屏 + 内存裁剪
 
-    /// 使用系统 screencapture -x -R x,y,w,h 截取指定矩形区域（以主显示器为基准）。
+    /// 非交互式区域截图：先获取一次全屏，再在内存中按像素裁剪。
+    /// 注意：x,y,w,h 均为像素坐标（主屏）。越界会自动截断，空区域返回错误。
     pub fn capture_region(x: u32, y: u32, w: u32, h: u32) -> Result<Screenshot> {
-        let tmp = NamedTempFile::new()?;
-        let path = tmp.path().to_path_buf();
-        let region = format!("{},{},{},{}", x, y, w, h);
-        let status = Command::new("screencapture")
-            .arg("-x")
-            .arg("-R")
-            .arg(&region)
-            .arg(&path)
-            .status()
-            .context("执行 screencapture 区域命令失败")?;
-        if !status.success() {
-            anyhow::bail!("screencapture 区域模式退出状态非 0");
+        let full = Self::capture_full()?;
+        let frame = &full.raw.primary;
+        if w == 0 || h == 0 {
+            anyhow::bail!("empty crop");
         }
-        let mut bytes = Vec::new();
-        std::fs::File::open(&path)
-            .context("打开区域临时截图失败")?
-            .read_to_end(&mut bytes)
-            .context("读取区域临时截图失败")?;
-        let img = image::load_from_memory(&bytes).context("解析区域截图失败")?;
-        let (rw, rh) = img.dimensions();
-        let rgba = img.to_rgba8().into_raw();
-        Ok(Self::build_screenshot(rw, rh, rgba))
-    }
-
-    /// 交互式框选：调用 screencapture -i -s 让用户框选（或 -i 单次交互），返回截图。
-    /// 注意：自动化测试中不可用；需人工授权并交互。此函数不加 -x 以便系统出声音/动画可选。
-    pub fn capture_region_interactive() -> Result<Screenshot> {
-        let tmp = NamedTempFile::new()?;
-        let path = tmp.path().to_path_buf();
-        let status = Command::new("screencapture")
-            .arg("-i")
-            .arg(&path)
-            .status()
-            .context("执行 screencapture 交互命令失败")?;
-        if !status.success() {
-            anyhow::bail!("交互框选被取消或失败");
+        let x2 = (x.saturating_add(w)).min(frame.width);
+        let y2 = (y.saturating_add(h)).min(frame.height);
+        let cw = x2.saturating_sub(x);
+        let ch = y2.saturating_sub(y);
+        if cw == 0 || ch == 0 {
+            anyhow::bail!("empty crop");
         }
-        let mut bytes = Vec::new();
-        std::fs::File::open(&path)
-            .context("打开交互临时截图失败")?
-            .read_to_end(&mut bytes)
-            .context("读取交互临时截图失败")?;
-        let img = image::load_from_memory(&bytes).context("解析交互截图失败")?;
-        let (w, h) = img.dimensions();
-        let rgba = img.to_rgba8().into_raw();
-        Ok(Self::build_screenshot(w, h, rgba))
+        let mut bytes = vec![0u8; (cw * ch * 4) as usize];
+        for row in 0..ch {
+            let src_row_start = (((y + row) * frame.width + x) * 4) as usize;
+            let src_row_end = src_row_start + (cw * 4) as usize;
+            let dst_row_start = (row * cw * 4) as usize;
+            let dst_row_end = dst_row_start + (cw * 4) as usize;
+            bytes[dst_row_start..dst_row_end]
+                .copy_from_slice(&frame.bytes[src_row_start..src_row_end]);
+        }
+        Ok(Self::build_screenshot(cw, ch, bytes))
     }
 
     /// 未来自研框选 UI 接口：通过 ui_overlay 的 RegionSelector 获取矩形，
@@ -224,11 +170,16 @@ impl MacCapturer {
             }
         };
 
-        // 裁剪（边界钳制）
-        let x = rect.x.max(0.0) as u32;
-        let y = rect.y.max(0.0) as u32;
-        let w = rect.w.max(0.0) as u32;
-        let h = rect.h.max(0.0) as u32;
+        // 裁剪（边界钳制）；Region 为逻辑坐标，需要乘以 scale 转为像素
+        let scale = if rect.scale.is_finite() && rect.scale > 0.0 {
+            rect.scale
+        } else {
+            1.0
+        } as f32;
+        let x = (rect.x * scale).floor().max(0.0) as u32;
+        let y = (rect.y * scale).floor().max(0.0) as u32;
+        let w = (rect.w * scale).round().max(0.0) as u32;
+        let h = (rect.h * scale).round().max(0.0) as u32;
         let x2 = (x + w).min(frame.width);
         let y2 = (y + h).min(frame.height);
         let cw = x2.saturating_sub(x);

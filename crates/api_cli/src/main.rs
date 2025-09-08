@@ -34,7 +34,7 @@ enum Commands {
     CaptureRegion(CaptureRegionArgs),
     /// 输出当前进程 metrics 文本
     Metrics,
-    /// 自研框选 UI 截图（原生选择器）
+    /// 自研框选 UI 截图（仅自研 GUI）
     CaptureInteractive(CaptureInteractiveArgs),
 }
 
@@ -104,13 +104,7 @@ struct CaptureInteractiveArgs {
         default_value = "Screenshot-{date:yyyyMMdd-HHmmss}-{seq}"
     )]
     template: String,
-    /// 选择器类型：native(原生), gui(纯GUI)
-    #[arg(
-        long,
-        default_value = "native",
-        value_parser = ["native", "gui"]
-    )]
-    selector: String,
+    // 仅保留 GUI 选择器（参数移除）
 }
 
 fn build_mock_screenshot() -> Screenshot {
@@ -332,17 +326,6 @@ fn main() {
                 eprintln!("裁剪宽高必须 > 0");
                 std::process::exit(1);
             }
-            #[cfg(target_os = "macos")]
-            let sub = match platform_mac::MacCapturer::capture_region(
-                parts[0], parts[1], parts[2], parts[3],
-            ) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("原生区域捕获失败，退回内存裁剪: {e}");
-                    crop_screenshot(&base, parts[0], parts[1], parts[2], parts[3])
-                }
-            };
-            #[cfg(not(target_os = "macos"))]
             let sub = crop_screenshot(&base, parts[0], parts[1], parts[2], parts[3]);
             let fname = gen_file_name(&args.template, 0) + ".png";
             let path = args.out_dir.join(fname);
@@ -371,24 +354,9 @@ fn main() {
             {
                 use platform_mac::MacCapturer;
 
-                // 根据参数选择不同的选择器
-                let selector: Box<dyn ui_overlay::RegionSelector> = match args.selector.as_str() {
-                    "native" => {
-                        println!("🔧 使用增强原生选择器 (macOS screencapture)");
-                        ui_overlay::create_enhanced_native_selector()
-                    }
-                    "gui" => {
-                        println!("🎨 使用纯 GUI 选择器 (Iced 界面)");
-                        ui_overlay::create_gui_region_selector()
-                    }
-                    _ => {
-                        eprintln!(
-                            "❌ 未知选择器类型: {}，支持的类型: native, gui",
-                            args.selector
-                        );
-                        std::process::exit(1);
-                    }
-                };
+                // 仅使用 GUI 选择器（接口已提供，占位实现可能返回取消）
+                let selector: Box<dyn ui_overlay::RegionSelector> =
+                    ui_overlay::create_gui_region_selector();
 
                 match MacCapturer::capture_region_interactive_custom(selector.as_ref()) {
                     Ok(shot) => {

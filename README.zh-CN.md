@@ -18,9 +18,9 @@ crates/
   infra/          # 基础设施：指标、panic 处理、LRU 缓存、路径解析
   renderer/       # CPU RGBA 合成、混合模式、形状渲染
   services/       # 业务逻辑编排（捕获、标注、导出、历史）
-  platform_mac/   # macOS 捕获（xcap + screencapture）、剪贴板集成
+  platform_mac/   # macOS 捕获（基于 xcap）、剪贴板集成
   platform_win/   # Windows 捕获（占位/桩实现）
-  ui_overlay/     # 自研区域选择器，基于 Iced GUI 框架
+  ui_overlay/     # 区域选择器接口（GUI 实现规划中）
   api_cli/        # CLI 接口，含截图命令和交互式选择
   api_napi/       # Node.js 绑定（规划中）
   ocr_adapter/    # OCR 集成（规划中）
@@ -35,10 +35,10 @@ cargo test --workspace
 cargo build -p renderer
 ```
 
-### MVP 状态 (2025-08) ✅ 已完成
-已完成端到端完整功能闭环：
-- **截图捕获**：全屏 & 区域截图（macOS 原生 xcap + screencapture 回退，多显示器支持 `--all`）
-- **交互式选择**：自研区域选择器，基于 Iced GUI 框架（替代 screencapture -i）
+### MVP 状态
+已完成核心/渲染/导出闭环；区域选择仅面向自研 GUI（不再保留系统原生回退）：
+- **截图捕获**：全屏 & 区域截图（基于 xcap；多显示器支持 `--all`）
+- **交互式选择**：通过自研 GUI（规划中；接口已存在）
 - **标注功能**：矩形 / 箭头 / 文本 + 撤销/重做 + 图层顺序操作（均可撤销）
 - **导出功能**：PNG 文件导出 & macOS 剪贴板，内置 JPEG 支持
 - **命名模板**：`{date},{seq},{screen}` 模板，支持跨进程当日序列持久化
@@ -60,10 +60,10 @@ cargo run -p api_cli -- capture --all -d multi_screen  # 多显示器支持
 cargo run -p api_cli -- capture-region --rect 100,120,400,300 -d shots
 ```
 
-交互式选择（自研 UI）：
+交互式选择：
 ```sh
-cargo run -p api_cli -- capture-interactive -d shots --selector native  # 增强原生选择器
-cargo run -p api_cli -- capture-interactive -d shots --selector gui    # 纯 GUI 选择器
+cargo run -p api_cli -- capture-interactive -d shots
+# 仅支持 GUI 选择器；当前构建提供接口（GUI 实现规划中）
 ```
 
 模拟模式（无权限测试）：
@@ -95,7 +95,7 @@ cat shots/.history/seq.txt  # 跨进程序列持久化
 - [x] 基础标注：矩形 / 箭头 / 文本，支持撤销/重做
 - [x] 高级标注：高亮 / 马赛克 / 自由手绘 / 虚线描边
 - [x] PNG & JPEG 导出，质量控制
-- [x] 交互式区域选择，自研 GUI 界面
+- [ ] 交互式区域选择 GUI（规划中）
 - [x] 多显示器截图支持
 - [x] 跨进程序列持久化
 - [x] 历史系统含缩略图

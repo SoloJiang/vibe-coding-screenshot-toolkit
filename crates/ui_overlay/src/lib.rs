@@ -1,120 +1,121 @@
-//! ui_overlay: 基于 Iced 的截图框选 UI
-//!
-//! 提供跨平台区域选择 (Region Selection) 能力，使用 Iced 实现轻量级、高性能的截图框选界面。
-//! 支持鼠标拖拽、控制点调整、键盘快捷键等交互方式。
-
+use chrono::{DateTime, Utc};
 use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Region {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    /// 逻辑坐标对应的缩放因子 (HiDPI 下为屏幕 scale)
+    pub scale: f32,
+}
+
+impl Region {
+    pub fn new(x: f32, y: f32, w: f32, h: f32, scale: f32) -> Self {
+        Self { x, y, w, h, scale }
+    }
+
+    pub fn norm(&self) -> Self {
+        let (mut x, mut y, mut w, mut h) = (self.x, self.y, self.w, self.h);
+        if w < 0.0 {
+            x += w;
+            w = -w;
+        }
+        if h < 0.0 {
+            y += h;
+            h = -h;
+        }
+        Self {
+            x,
+            y,
+            w,
+            h,
+            scale: self.scale,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum OverlayError {
-    #[error("unsupported platform overlay")]
-    Unsupported,
-    #[error("user canceled selection")]
-    Canceled,
+    #[error("user cancelled")]
+    Cancelled,
     #[error("internal error: {0}")]
     Internal(String),
-    #[error("Iced initialization failed: {0}")]
-    IcedInitializationFailed(String),
-    #[error("Image creation failed: {0}")]
-    ImageCreationFailed(String),
-    #[error("Event handling failed: {0}")]
-    EventHandlingFailed(String),
-    #[error("Invalid selection bounds")]
-    InvalidBounds,
 }
 
 pub type Result<T> = std::result::Result<T, OverlayError>;
+pub type MaybeRegion = std::result::Result<Option<Region>, OverlayError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct Rect {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-impl Rect {
-    pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
-        Self { x, y, w, h }
-    }
-
-    pub fn normalized(self) -> Option<Self> {
-        if self.w > 0.0 && self.h > 0.0 {
-            Some(self)
-        } else {
-            None
+/// 选择器契约：阻塞选择一个矩形区域；取消则返回 Err(Cancelled)
+pub trait RegionSelector {
+    fn select(&self) -> Result<Region>;
+    /// 可选：携带背景 RGB 缓冲（width*height*3）。默认忽略背景。
+    /// 语义：
+    /// - Ok(Some(r)) -> 用户确认区域
+    /// - Ok(None) -> 用户取消
+    /// - Err(e) -> 内部错误
+    fn select_with_background(&self, _rgb: &[u8], _width: u32, _height: u32) -> MaybeRegion {
+        match self.select() {
+            Ok(r) => Ok(Some(r)),
+            Err(OverlayError::Cancelled) => Ok(None),
+            Err(e) => Err(e),
         }
     }
-
-    pub fn contains_point(&self, x: f32, y: f32) -> bool {
-        x >= self.x && x <= self.x + self.w && y >= self.y && y <= self.y + self.h
-    }
-
-    pub fn intersects(&self, other: &Rect) -> bool {
-        !(self.x + self.w < other.x
-            || other.x + other.w < self.x
-            || self.y + self.h < other.y
-            || other.y + other.h < self.y)
-    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32,
+/// 一个 mock：立即返回给定区域；用于非图形环境测试
+pub struct MockSelector {
+    pub region: parking_lot::Mutex<Option<Region>>,
 }
 
-impl Point {
-    pub fn new(x: f32, y: f32) -> Self {
-        Self { x, y }
+impl MockSelector {
+    pub fn new(region: Option<Region>) -> Self {
+        Self {
+            region: parking_lot::Mutex::new(region),
+        }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Size {
-    pub w: f32,
-    pub h: f32,
-}
-
-impl Size {
-    pub fn new(w: f32, h: f32) -> Self {
-        Self { w, h }
+impl RegionSelector for MockSelector {
+    fn select(&self) -> Result<Region> {
+        let mut g = self.region.lock();
+        match g.take() {
+            Some(r) => Ok(r),
+            None => Err(OverlayError::Cancelled),
+        }
     }
 }
 
-/// 区域选择器 Trait
-pub trait RegionSelector: Send + Sync {
-    /// 触发一次交互式框选
-    /// 成功：Ok(Some(Rect))；用户取消：Ok(None)；不支持：Err(Unsupported)
-    fn select(&self) -> Result<Option<Rect>>;
+mod selector;
 
-    /// 带背景图像的框选（可选实现）
-    fn select_with_background(
-        &self,
-        _background: &[u8],
-        _width: u32,
-        _height: u32,
-    ) -> Result<Option<Rect>> {
-        self.select()
-    }
+pub fn create_gui_region_selector() -> Box<dyn RegionSelector> {
+    Box::new(selector::WinitRegionSelector::new())
 }
 
-/// 占位实现：返回 Unsupported
-pub struct StubRegionSelector;
-
-impl RegionSelector for StubRegionSelector {
-    fn select(&self) -> Result<Option<Rect>> {
-        Err(OverlayError::Unsupported)
-    }
+/// 选择结果的审计信息（预留）
+#[derive(Debug, Clone)]
+pub struct SelectionAudit {
+    pub id: uuid::Uuid,
+    pub at: DateTime<Utc>,
+    pub region: Option<Region>,
 }
 
-// Iced 实现
-pub mod iced_overlay;
-pub mod native_enhanced;
-pub use iced_overlay::{
-    create_region_selector, create_region_selector_with_config, IcedRegionSelector,
-};
-pub use native_enhanced::{
-    create_enhanced_native_selector, create_gui_region_selector, EnhancedNativeSelector,
-    IcedGuiRegionSelector,
-};
+impl SelectionAudit {
+    pub fn cancelled() -> Self {
+        let ts = uuid::Timestamp::now(uuid::NoContext);
+        Self {
+            id: uuid::Uuid::new_v7(ts),
+            at: Utc::now(),
+            region: None,
+        }
+    }
+    pub fn finished(r: Region) -> Self {
+        let ts = uuid::Timestamp::now(uuid::NoContext);
+        Self {
+            id: uuid::Uuid::new_v7(ts),
+            at: Utc::now(),
+            region: Some(r),
+        }
+    }
+}

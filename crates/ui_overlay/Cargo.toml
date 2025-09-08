@@ -5,12 +5,17 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
-chrono = { workspace = true }
-uuid = { workspace = true }
 thiserror = { workspace = true }
-iced = { version = "0.13", features = ["canvas", "tokio"] }
-image = { workspace = true }
-screenshot_core = { path = "../core" }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+winit = "0.28"
+pixels = "0.13"
 
-[features]
-default = []
+# macOS 依赖：用于窗口层级/行为控制（selector.rs 的 macOS 分支）
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.24"
+objc = "0.2"
+core-graphics = "0.24"
+

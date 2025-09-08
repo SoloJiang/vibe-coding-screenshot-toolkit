@@ -15,14 +15,14 @@ Later: OcrService, PrivacyService, HookService, UploadPipeline。
 capture_full -> platform_capturer.capture -> Screenshot
 export_png -> renderer.render -> encoder.png -> save / clipboard -> history.append
 
-## 计划中的自定义框选 UI (后置)
+## 自定义框选 UI（计划/后置）
 独立 crate `ui_overlay` 提供：
-- RegionSelector trait: select() -> Result<Option<Rect>> (用户取消返回 Ok(None))
+- RegionSelector trait: select() -> Result<Region>；可选 select_with_background(...)，用户取消 -> Err(Cancelled)，或由上层转换为 None
 - Mac/Win 使用 winit/tao 创建无边框全屏透明窗口，绘制半透明蒙层 + 实时矩形。
 - 交互：按下拖拽=调整；Esc 取消；Enter/Space 确认；Shift/Alt 约束比例。
 - 输出：返回逻辑显示坐标 + scale，用于对全屏截图裁剪，而非再次系统命令截图。
 
-优先级：替换当前对 `screencapture -R/-i` 的依赖，统一跨平台行为，并允许在 UI 层叠加标注/预览。
+优先级：移除对 `screencapture -R/-i` 的依赖，统一跨平台行为；允许在 UI 层叠加标注/预览（GUI 实现规划中）。
 
 ## 并发
 MVP：同步或简单阻塞渲染（1080p 性能可接受）；后续再拆 spawn_blocking / OCR 池。
