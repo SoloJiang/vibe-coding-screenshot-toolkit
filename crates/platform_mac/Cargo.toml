@@ -11,9 +11,10 @@ uuid = { workspace = true }
 anyhow = { workspace = true }
 image = { version = "0.25", default-features = false, features=["png"] }
 tempfile = "3"
-xcap = { version = "0.3", default-features = false, features=["image"] }
+xcap = { version = "0.7.0", default-features = false, features=["image"] }
 services = { path = "../services" }
-objc = "0.2.7"
-cocoa = "0.25.0"
+objc2 = "0.6.2"
+objc2-foundation = "0.3.1"
+objc2-app-kit = "0.3.1"
 ui_overlay = { path = "../ui_overlay" }
 infra = { path = "../infra" }

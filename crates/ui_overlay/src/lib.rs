@@ -87,6 +87,7 @@ impl RegionSelector for MockSelector {
     }
 }
 
+pub mod platform;
 mod selector;
 
 pub fn create_gui_region_selector() -> Box<dyn RegionSelector> {

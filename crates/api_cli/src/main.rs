@@ -10,6 +10,7 @@ use services::StubClipboard;
 use services::{gen_file_name, ExportService, HistoryService};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tracing_subscriber::{fmt, EnvFilter};
 use uuid::Uuid;
 
 // Mock 截图常量
@@ -209,6 +210,14 @@ fn save_sequence(seq_file: &std::path::Path) {
 }
 
 fn main() {
+    // 初始化日志
+    let _ = fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .try_init();
+
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Version) | None => {

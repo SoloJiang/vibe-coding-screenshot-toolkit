@@ -13,6 +13,8 @@
 - [ ] diag
  - [x] 序列号跨进程持久化 (.history/seq.txt 读写)
  - [x] --mock 选项 (跳过真实捕获)
+ - [x] 序列号跨进程持久化 (.history/seq.txt 读写)
+ - [x] --mock 选项 (跳过真实捕获)
 
 ## m3
 - [ ] ocr-bench

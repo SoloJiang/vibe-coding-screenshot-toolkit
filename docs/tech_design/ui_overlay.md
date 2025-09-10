@@ -5,7 +5,7 @@
 - 输出一个逻辑坐标系下的矩形 Region 以及屏幕缩放因子 scale，供 services 使用对全屏截图进行裁剪，而非再次调用系统截图命令。
 - 不直接负责像素渲染（交由 renderer）与业务编排（交由 services）。
 
-## 最小接口（当前）
+## 接口
 crate 暴露：
 - 结构体 `Region { x, y, w, h, scale }`，提供 `norm()` 规范化（处理负拖动）。
 - 错误 `OverlayError::{Cancelled, Internal}` 与 `type Result<T>`。
@@ -13,27 +13,29 @@ crate 暴露：
 - 扩展方法 `select_with_background(&self, rgb, width, height) -> Result<Option<Region>>`：默认包装 `select()`；平台可利用背景预览（如 macOS 集成）。
 - `MockSelector`：无 UI，返回固定 Region 或 Cancelled，便于测试。
 
-## 事件与交互（候选快捷键）
+## 事件与交互
 - 鼠标左键拖拽：绘制/调整矩形。
 - Enter/Space：确认；Esc：取消。
-- Shift：固定比例（如 16:9/1:1）；Alt：从中心拉伸（后续迭代）。
+- Shift：固定比例（如 16:9/1:1）；Alt：从中心拉伸。
 
 ## 坐标与缩放
 - `x,y,w,h` 为逻辑坐标（winit 的 logical）；`scale = window.scale_factor()`。
 - 裁剪像素矩形时应使用：`px = round(x*scale) ...`，并对边界做 clamp。
 
-## 平台实现（当前）
+## 平台实现
 - 统一采用 `winit + pixels` 的跨平台实现，文件：`crates/ui_overlay/src/selector.rs`。
 - 渲染：在 `pixels` 帧缓冲中绘制真实桌面截图背景、选区外暗化、选区白色描边，选区内部保持透明效果。
+- 平台胶水隔离：新增 `ui_overlay::platform` 模块（`crates/ui_overlay/src/platform/mod.rs`），封装 macOS 的菜单栏/Dock 隐藏等呈现设置，核心选择器仅调用 `start_presentation()/end_presentation()`，减少条件编译分支和跨端耦合。
 - macOS：通过 Cocoa API（仅在 macOS 分支编译）设置 NSWindow 为无边框、不可拖动、提升窗口层级、隐藏 Dock 和菜单栏，并将窗口 frame 设置为整个屏幕区域（非 visibleFrame），确保完全覆盖。
-- Windows：使用同一套 winit 事件与 pixels 渲染路径；窗口置顶与透明穿透为后续可选增强。
+- Windows：使用同一套 winit 事件与 pixels 渲染路径；可选增强为窗口置顶与穿透。
+ - 启动性能优化：窗口初始不可见（with_visible(false)），创建后立即预热 Pixels（ensure_pixels + render_once），再显示并 request_redraw；空闲阶段不进行持续重绘（about_to_wait 不再 request_redraw），仅在输入/尺寸变化时重绘。
 
 ## 错误与取消语义
 - 用户按 Esc/关闭窗口 -> `OverlayError::Cancelled`。
 - 系统/窗口错误 -> `OverlayError::Internal(String)`。
 
-## 与 services 的集成（计划）
-- services 中新增 `RegionSelectService`（后续 PR）：
+## 与 services 的集成
+- services 中新增 `RegionSelectService`：
   - 使用平台具体实现（如 `WinitSelector` 封装）调用 `select()`。
   - 将 `Region` 转换为对全屏 `Frame` 的裁剪区域，传递给 renderer/export。
 
@@ -43,9 +45,5 @@ crate 暴露：
 ## 安全与权限
 - 无敏感权限；不读取剪贴板/文件系统，仅创建窗口。
 
-## 未来迭代点
-- 绘制半透明蒙层与矩形描边（GPU 或 CPU）。
-- 键盘快捷键扩展（移动/扩大/吸附屏幕边缘/网格）。
-- 多显示器支持（聚合虚拟坐标系）。
-- 屏幕快照预览层（仅 UI 显示，不参与导出）。
-- 点击穿透与交互层性能优化。
+## 备注
+本文档描述当前行为；扩展能力（多显示器、更多快捷键、性能优化等）留待后续讨论。

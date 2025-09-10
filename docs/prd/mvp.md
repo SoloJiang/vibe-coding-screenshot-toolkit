@@ -1,9 +1,9 @@
-# 截图与标注工具 MVP 产品需求文档 (PRD)
+# 截图与标注工具 MVP 产品需求文档
 
 版本：v0.1-MVP
 
 ## 1. 目标
-提供开发/内部测试可用的最小截图+基本标注+导出闭环，验证核心架构、性能基线与后续扩展可行性。
+提供开发/内部测试可用的最小截图+基本标注+导出闭环，验证核心架构与性能基线。
 
 ## 2. 范围 (In Scope)
 | 域 | 功能 | 描述 | 验收要点 |
@@ -24,7 +24,7 @@
 | CLI | capture-region | 区域截图 | 截图尺寸与输入匹配 |
 
 ## 3. 非范围 (Out of Scope / Later)
-窗口高亮、延时、连续模式、OCR、隐私模糊、上传、Markdown 导出、JPEG 优化质量参数、Hook、快捷键自定义、GPU/SIMD 优化、DirtyRect、主题/设置 UI。
+窗口高亮、延时、连续模式、OCR、隐私模糊、上传、Markdown 导出、JPEG 质量参数、Hook、快捷键自定义、GPU/SIMD 优化、DirtyRect、主题/设置 UI。
 
 ## 4. 关键规则
 1. 命名模板未知占位符忽略。
@@ -54,5 +54,5 @@
 - Undo 操作耗时 < 5ms。
 
 ## 8. 后续扩展挂钩
-文档保留与完整版 PRD 对应的 ID 映射位置，后续增量：CAP-02/04/05, ANO-HIGHLIGHT/MOSAIC/FREEHAND, EXP-02/03/04/05/06, HIS-02/03/04, OCR-*, PRIV-*, SET-*, HOOK-*, HOOK-02, CORE-02+ 性能优化。
+与完整版 PRD 对应的 ID 映射位置：CAP-02/04/05, ANO-HIGHLIGHT/MOSAIC/FREEHAND, EXP-02/03/04/05/06, HIS-02/03/04, OCR-*, PRIV-*, SET-*, HOOK-*, HOOK-02, CORE-02+ 性能优化。
 

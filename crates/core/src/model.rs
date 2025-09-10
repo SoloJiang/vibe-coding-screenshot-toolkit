@@ -21,7 +21,7 @@ pub enum PixelFormat {
 pub struct FrameSet {
     pub primary: Frame,
     pub all: Vec<Frame>,
-    // layout info TODO: add DisplayLayout when defined
+    // display layout info reserved for future extension
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +97,7 @@ pub struct Annotation {
     pub kind: AnnotationKind,
 }
 
-/// 历史条目 (内存结构) – TODO: 未来若持久化可单独拆文件
+/// 历史条目（内存结构）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryItem {
     pub id: Uuid,
@@ -107,7 +107,7 @@ pub struct HistoryItem {
     #[serde(with = "ts_millis")]
     pub created_at: DateTime<Utc>,
     pub title: Option<String>,
-    /// 版本占位, 便于未来演进 (序列化向前兼容)
+    /// 版本字段（用于序列化向前兼容）
     pub version: u8,
 }
 

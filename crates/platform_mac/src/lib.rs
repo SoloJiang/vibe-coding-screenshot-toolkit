@@ -1,12 +1,11 @@
 #![allow(unexpected_cfgs)]
-#[macro_use]
-extern crate objc;
 use anyhow::{Context, Result};
 use chrono::Utc;
-use cocoa::base::{id, nil};
-use cocoa::foundation::{NSData, NSString};
-use objc::rc::autoreleasepool;
-use objc::{class, msg_send, sel};
+use objc2::rc::autoreleasepool;
+use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
+use objc2::{class, msg_send};
+use objc2_foundation::{NSData, NSString};
 use screenshot_core::Result as CoreResult;
 use screenshot_core::{Frame, FrameSet, PixelFormat, Screenshot};
 use services::Clipboard;
@@ -18,33 +17,28 @@ use uuid::Uuid;
 pub struct MacClipboard;
 impl Clipboard for MacClipboard {
     fn write_image(&self, bytes: &[u8]) -> CoreResult<()> {
-        autoreleasepool(|| {
+        autoreleasepool(|_| {
+            use objc2_app_kit::NSPasteboard;
+            // NSPasteboard *pb = [NSPasteboard generalPasteboard];
+            let pb = unsafe { NSPasteboard::generalPasteboard() };
+            unsafe { pb.clearContents() };
+            // NSData from raw bytes
+            let data = NSData::with_bytes(bytes);
+            // public.png UTI
+            let uti: Retained<NSString> = NSString::from_str("public.png");
+            // writeObjects: (NSArray*) expects NSArray<id<NSPasteboardWriting>>; use single object convenience
+            // objc2 目前尚无直接 arrayWithObject 包装，临时走 low-level msg_send
+            let arr: *mut AnyObject =
+                unsafe { msg_send![class!(NSArray), arrayWithObject: &*data] };
+            let ok: bool = unsafe { msg_send![&*pb, writeObjects: arr] };
+            if !ok {
+                return Err(screenshot_core::Error::new(
+                    screenshot_core::ErrorKind::Clipboard,
+                    "write clipboard failed",
+                ));
+            }
             unsafe {
-                let cls = objc::runtime::Class::get("NSPasteboard").unwrap();
-                let pb: id = msg_send![cls, generalPasteboard];
-                let _: () = msg_send![pb, clearContents];
-                // NSData from bytes
-                let data: id = NSData::dataWithBytes_length_(
-                    nil,
-                    bytes.as_ptr() as *const _,
-                    bytes.len() as u64,
-                );
-                if data == nil {
-                    return Ok(());
-                }
-                // UTI for png: public.png
-                let uti = NSString::alloc(nil).init_str("public.png");
-                let arr: id = msg_send![class!(NSArray), arrayWithObject:data];
-                // writeObjects: expects NSArray of NSPasteboardWriting; NSData conforms
-                let ok: bool = msg_send![pb, writeObjects: arr];
-                if !ok {
-                    return Err(screenshot_core::Error::new(
-                        screenshot_core::ErrorKind::Clipboard,
-                        "write clipboard failed",
-                    ));
-                }
-                // Also set data for type explicitly (some apps rely on setData:forType:)
-                let _: () = msg_send![pb, setData:data forType:uti];
+                let _: () = msg_send![&*pb, setData: &*data, forType: &*uti];
             }
             Ok(())
         })
@@ -88,7 +82,7 @@ impl MacCapturer {
         let monitors = xcap::Monitor::all().context("列出显示器失败 (xcap)")?;
         let display = monitors
             .into_iter()
-            .find(|m| m.is_primary())
+            .find(|m| m.is_primary().unwrap_or(false))
             .ok_or_else(|| anyhow::anyhow!("未找到主显示器"))?;
         let img = display
             .capture_image()
@@ -127,9 +121,9 @@ impl MacCapturer {
         Ok(Self::build_screenshot(cw, ch, bytes))
     }
 
-    /// 未来自研框选 UI 接口：通过 ui_overlay 的 RegionSelector 获取矩形，
-    /// 然后基于一次全屏截图在内存裁剪出区域，避免多次系统调用。
-    /// 当前：若 selector 返回 Some(Rect) => 裁剪；None => 返回交互取消错误 (anyhow::bail)。
+    /// 自研框选 UI 接口：通过 ui_overlay 的 RegionSelector 获取矩形，
+    /// 基于一次全屏截图在内存裁剪出区域，避免多次系统调用。
+    /// 若 selector 返回 Some(Rect) => 裁剪；None => 交互取消。
     pub fn capture_region_interactive_custom(
         selector: &dyn ui_overlay::RegionSelector,
     ) -> Result<Screenshot> {
