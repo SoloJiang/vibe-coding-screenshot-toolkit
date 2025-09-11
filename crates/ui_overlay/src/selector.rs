@@ -60,12 +60,16 @@ impl WinitRegionSelector {
             bg: Option<Vec<u8>>,
             bg_w: u32,
             bg_h: u32,
+            // 预计算后的变暗背景（与 bg 同尺寸）。若无 bg 则为 None
+            bg_dim: Option<Vec<u8>>,
             dragging: bool,
             start: (f32, f32),
             curr: (f32, f32),
             result: Option<Region>,
             shift_down: bool,
             alt_down: bool,
+            // 合并高频重绘请求，避免在同一帧内重复 request_redraw
+            redraw_pending: bool,
         }
 
         impl SelectionApp {
@@ -138,46 +142,76 @@ impl WinitRegionSelector {
                 let frame = pixels.frame_mut();
                 let w = size_px.width as usize;
                 let h = size_px.height as usize;
-                if let Some(bg) = &self.bg {
-                    let rw = w.min(self.bg_w as usize);
-                    let rh = h.min(self.bg_h as usize);
+                // 1) 先绘制“变暗背景”：如果 bg_dim 尺寸与窗口一致则整体 memcpy，否则逐行裁剪
+                if let Some(bg_dim) = &self.bg_dim {
+                    let bw = self.bg_w as usize;
+                    let bh = self.bg_h as usize;
+                    if bw == w && bh == h {
+                        frame.copy_from_slice(bg_dim);
+                    } else {
+                        let rw = w.min(bw);
+                        let rh = h.min(bh);
+                        for y in 0..rh {
+                            let dst = y * w * 4;
+                            let src = y * bw * 4;
+                            frame[dst..dst + rw * 4].copy_from_slice(&bg_dim[src..src + rw * 4]);
+                        }
+                        // 多余区域补黑
+                        for y in rh..h {
+                            let row = &mut frame[y * w * 4..(y + 1) * w * 4];
+                            // RGBA 黑色
+                            for px in row.chunks_exact_mut(4) {
+                                px.copy_from_slice(&[0, 0, 0, 255]);
+                            }
+                        }
+                    }
+                } else if let Some(bg) = &self.bg {
+                    // 未预计算 dim（理论上不会发生），退化为直接拷贝 bg
+                    let bw = self.bg_w as usize;
+                    let bh = self.bg_h as usize;
+                    let rw = w.min(bw);
+                    let rh = h.min(bh);
                     for y in 0..rh {
                         let dst = y * w * 4;
-                        let src = y * (self.bg_w as usize) * 4;
+                        let src = y * bw * 4;
                         frame[dst..dst + rw * 4].copy_from_slice(&bg[src..src + rw * 4]);
                     }
                     for y in rh..h {
-                        for x in 0..w {
-                            let idx = (y * w + x) * 4;
-                            frame[idx..idx + 4].copy_from_slice(&[0, 0, 0, 255]);
+                        let row = &mut frame[y * w * 4..(y + 1) * w * 4];
+                        for px in row.chunks_exact_mut(4) {
+                            px.copy_from_slice(&[0, 0, 0, 255]);
                         }
                     }
                 } else {
+                    // 无背景版本：全黑
                     for y in 0..h {
-                        for x in 0..w {
-                            let idx = (y * w + x) * 4;
-                            frame[idx..idx + 4].copy_from_slice(&[0, 0, 0, 255]);
+                        let row = &mut frame[y * w * 4..(y + 1) * w * 4];
+                        for px in row.chunks_exact_mut(4) {
+                            px.copy_from_slice(&[0, 0, 0, 255]);
                         }
                     }
                 }
-                let dim_alpha = 90u8;
-                for y in 0..h {
-                    for x in 0..w {
-                        let inside = x >= x0 && x < x1 && y >= y0 && y < y1;
-                        if inside {
-                            continue;
+
+                // 2) 若有选区：从原始 bg 恢复选区内容（避免全屏逐像素变暗）
+                if x1 > x0 && y1 > y0 {
+                    if let Some(bg) = &self.bg {
+                        let bw = self.bg_w as usize;
+                        let bh = self.bg_h as usize;
+                        let rx0 = x0.min(bw);
+                        let ry0 = y0.min(bh);
+                        let rx1 = x1.min(bw);
+                        let ry1 = y1.min(bh);
+                        if rx1 > rx0 && ry1 > ry0 {
+                            let rw = rx1 - rx0;
+                            for y in 0..(ry1 - ry0) {
+                                let dst = ((ry0 + y) * w + rx0) * 4;
+                                let src = ((ry0 + y) * bw + rx0) * 4;
+                                frame[dst..dst + rw * 4].copy_from_slice(&bg[src..src + rw * 4]);
+                            }
                         }
-                        let idx = (y * w + x) * 4;
-                        let r = frame[idx] as u16;
-                        let g = frame[idx + 1] as u16;
-                        let b = frame[idx + 2] as u16;
-                        let a = dim_alpha as u16;
-                        frame[idx] = ((r * (255 - a)) / 255) as u8;
-                        frame[idx + 1] = ((g * (255 - a)) / 255) as u8;
-                        frame[idx + 2] = ((b * (255 - a)) / 255) as u8;
-                        frame[idx + 3] = 255;
                     }
                 }
+
                 if x1 > x0 && y1 > y0 {
                     for x in x0..x1 {
                         let it = (y0 * w + x) * 4;
@@ -195,6 +229,8 @@ impl WinitRegionSelector {
                 if pixels.render().is_err() {
                     event_loop.exit();
                 }
+                // 完成一次有效绘制，允许后续 request_redraw
+                self.redraw_pending = false;
             }
         }
 
@@ -219,13 +255,34 @@ impl WinitRegionSelector {
                         // 初始化尺寸并保存窗口句柄
                         self.size_px = w.inner_size();
                         self.window = Some(Box::new(w));
+                        // 预计算变暗背景，避免每帧逐像素处理
+                        if self.bg_dim.is_none() {
+                            if let Some(bg) = &self.bg {
+                                let mut dim = vec![0u8; bg.len()];
+                                let a = 90u8 as u16; // 与原先 dim_alpha 保持一致
+                                for (i, chunk) in bg.chunks_exact(4).enumerate() {
+                                    let r = chunk[0] as u16;
+                                    let g = chunk[1] as u16;
+                                    let b = chunk[2] as u16;
+                                    let base = i * 4;
+                                    dim[base] = ((r * (255 - a)) / 255) as u8;
+                                    dim[base + 1] = ((g * (255 - a)) / 255) as u8;
+                                    dim[base + 2] = ((b * (255 - a)) / 255) as u8;
+                                    dim[base + 3] = 255;
+                                }
+                                self.bg_dim = Some(dim);
+                            }
+                        }
                         // 预热：尽早创建并渲染一次 Pixels，避免首次输入触发时的初始化卡顿
                         let _ = self.ensure_pixels();
                         self.render_once(event_loop);
                         // 预热完成后再显示窗口
                         if let Some(win) = self.window.as_ref() {
                             win.set_visible(true);
-                            win.request_redraw();
+                            if !self.redraw_pending {
+                                self.redraw_pending = true;
+                                win.request_redraw();
+                            }
                         }
                     }
                     Err(_) => event_loop.exit(),
@@ -270,37 +327,55 @@ impl WinitRegionSelector {
                             Key::Named(NamedKey::Shift) => {
                                 self.shift_down = state == ElementState::Pressed;
                                 if let Some(w) = self.window.as_ref() {
-                                    w.request_redraw();
+                                    if !self.redraw_pending {
+                                        self.redraw_pending = true;
+                                        w.request_redraw();
+                                    }
                                 }
                             }
                             Key::Named(NamedKey::Alt) => {
                                 self.alt_down = state == ElementState::Pressed;
                                 if let Some(w) = self.window.as_ref() {
-                                    w.request_redraw();
+                                    if !self.redraw_pending {
+                                        self.redraw_pending = true;
+                                        w.request_redraw();
+                                    }
                                 }
                             }
                             Key::Named(NamedKey::ArrowLeft) if state == ElementState::Pressed => {
                                 self.curr.0 -= 1.0;
                                 if let Some(w) = self.window.as_ref() {
-                                    w.request_redraw();
+                                    if !self.redraw_pending {
+                                        self.redraw_pending = true;
+                                        w.request_redraw();
+                                    }
                                 }
                             }
                             Key::Named(NamedKey::ArrowRight) if state == ElementState::Pressed => {
                                 self.curr.0 += 1.0;
                                 if let Some(w) = self.window.as_ref() {
-                                    w.request_redraw();
+                                    if !self.redraw_pending {
+                                        self.redraw_pending = true;
+                                        w.request_redraw();
+                                    }
                                 }
                             }
                             Key::Named(NamedKey::ArrowUp) if state == ElementState::Pressed => {
                                 self.curr.1 -= 1.0;
                                 if let Some(w) = self.window.as_ref() {
-                                    w.request_redraw();
+                                    if !self.redraw_pending {
+                                        self.redraw_pending = true;
+                                        w.request_redraw();
+                                    }
                                 }
                             }
                             Key::Named(NamedKey::ArrowDown) if state == ElementState::Pressed => {
                                 self.curr.1 += 1.0;
                                 if let Some(w) = self.window.as_ref() {
-                                    w.request_redraw();
+                                    if !self.redraw_pending {
+                                        self.redraw_pending = true;
+                                        w.request_redraw();
+                                    }
                                 }
                             }
                             _ => {}
@@ -353,7 +428,10 @@ impl WinitRegionSelector {
                             self.curr = (x, y);
                         }
                         if let Some(w) = self.window.as_ref() {
-                            w.request_redraw();
+                            if !self.redraw_pending {
+                                self.redraw_pending = true;
+                                w.request_redraw();
+                            }
                         }
                     }
                     WindowEvent::Resized(new_size) => {
@@ -362,7 +440,10 @@ impl WinitRegionSelector {
                             let _ = p.resize_surface(new_size.width, new_size.height);
                         }
                         if let Some(w) = self.window.as_ref() {
-                            w.request_redraw();
+                            if !self.redraw_pending {
+                                self.redraw_pending = true;
+                                w.request_redraw();
+                            }
                         }
                     }
                     WindowEvent::RedrawRequested => {
@@ -396,12 +477,14 @@ impl WinitRegionSelector {
             bg: bg_rgba,
             bg_w,
             bg_h,
+            bg_dim: None,
             dragging: false,
             start: (0.0, 0.0),
             curr: (0.0, 0.0),
             result: None,
             shift_down: false,
             alt_down: false,
+            redraw_pending: false,
         };
 
         if let Err(e) = event_loop.run_app(&mut app) {

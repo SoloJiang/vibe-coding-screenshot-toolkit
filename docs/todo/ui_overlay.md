@@ -34,3 +34,11 @@
 	- 现象：第一次触发框选时卡顿，选择框出现后流畅。
 	- 根因：首次交互触发时才初始化 pixels/wgpu 与首次渲染。
  	- 修复：窗口初始不可见；在 resumed 中创建窗口后立即 ensure_pixels 并 render_once 预热，再显示窗口；移除空闲时的持续 request_redraw，改为按需重绘。
+
+- [x] 拖动选择框存在卡顿（CPU 占用偏高）：
+	- 现象：持续拖动时帧率不稳定，CPU 使用上升。
+	- 根因：每帧对整屏逐像素进行暗化计算（对 frame 做 per-pixel alpha 混合），加之高频 CursorMoved 事件导致重复 request_redraw，造成冗余计算。
+	- 修复：
+		- 预先根据背景 `bg` 生成一次性“变暗背景”缓冲（`bg_dim`），渲染帧直接 memcpy；
+		- 选区内从原始 `bg` 恢复（逐行拷贝），避免对全屏进行 per-pixel 计算；
+		- 增加 `redraw_pending` 标志，合并高频重绘请求，防止同一帧多次 request_redraw。

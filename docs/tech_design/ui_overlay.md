@@ -30,6 +30,16 @@ crate 暴露：
 - Windows：使用同一套 winit 事件与 pixels 渲染路径；可选增强为窗口置顶与穿透。
  - 启动性能优化：窗口初始不可见（with_visible(false)），创建后立即预热 Pixels（ensure_pixels + render_once），再显示并 request_redraw；空闲阶段不进行持续重绘（about_to_wait 不再 request_redraw），仅在输入/尺寸变化时重绘。
 
+### 渲染性能与拖动优化
+- 背景暗化策略：
+  - 若提供背景 RGB（截图像素），在窗口创建后预先计算一份“变暗背景”（bg_dim），暗化公式与原先一致（a=90/255）。
+  - 每帧渲染时直接将 bg_dim 拷贝到帧缓冲，不再进行全屏 per-pixel 混合。
+  - 选区内部从原始 bg 恢复（逐行拷贝），然后绘制白色描边。
+- 重绘节流：
+  - 引入 `redraw_pending` 标志，避免在高频 `CursorMoved`/按键事件中重复调用 `request_redraw()`，在一次有效绘制完成后清零。
+- 尺寸变化：
+  - `resize_surface` 后仍按需 request_redraw，保持与预热路径一致。
+
 ## 错误与取消语义
 - 用户按 Esc/关闭窗口 -> `OverlayError::Cancelled`。
 - 系统/窗口错误 -> `OverlayError::Internal(String)`。
