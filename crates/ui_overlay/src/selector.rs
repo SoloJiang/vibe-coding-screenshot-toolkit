@@ -70,6 +70,8 @@ impl WinitRegionSelector {
             alt_down: bool,
             // 合并高频重绘请求，避免在同一帧内重复 request_redraw
             redraw_pending: bool,
+            // 缓存 scale factor，避免频繁调用 window.scale_factor()
+            scale: f64,
         }
 
         impl SelectionApp {
@@ -126,12 +128,8 @@ impl WinitRegionSelector {
                     return;
                 }
                 let size_px = self.size_px;
-                // 先计算缩放与矩形，避免持有对 pixels 的可变借用期间再次借用 self
-                let scale = self
-                    .window
-                    .as_ref()
-                    .map(|w| w.scale_factor() as f32)
-                    .unwrap_or(1.0);
+                // 先计算缩放与矩形；使用缓存的 scale 避免反复查询
+                let scale = self.scale as f32;
                 let (x0l, y0l, x1l, y1l) = self.rect_logical();
                 let x0 = (x0l * scale).floor().max(0.0) as usize;
                 let y0 = (y0l * scale).floor().max(0.0) as usize;
@@ -254,6 +252,8 @@ impl WinitRegionSelector {
                         }
                         // 初始化尺寸并保存窗口句柄
                         self.size_px = w.inner_size();
+                        let scale = w.scale_factor(); // 缓存当前缩放因子
+                        self.scale = scale;
                         self.window = Some(Box::new(w));
                         // 预计算变暗背景，避免每帧逐像素处理
                         if self.bg_dim.is_none() {
@@ -400,11 +400,7 @@ impl WinitRegionSelector {
                         let w = (x1l - x0l).abs();
                         let h = (y1l - y0l).abs();
                         if w >= 1.0 && h >= 1.0 {
-                            let scale = self
-                                .window
-                                .as_ref()
-                                .map(|w| w.scale_factor() as f32)
-                                .unwrap_or(1.0);
+                            let scale = self.scale as f32;
                             self.result = Some(Region::new(x0l, y0l, w, h, scale));
                         }
                         // no-op: simple fullscreen已移除
@@ -414,12 +410,7 @@ impl WinitRegionSelector {
                         event_loop.exit();
                     }
                     WindowEvent::CursorMoved { position, .. } => {
-                        let scale = self
-                            .window
-                            .as_ref()
-                            .map(|w| w.scale_factor())
-                            .unwrap_or(1.0);
-                        let p = position.to_logical::<f64>(scale);
+                        let p = position.to_logical::<f64>(self.scale);
                         let (x, y) = (p.x as f32, p.y as f32);
                         if self.dragging {
                             self.curr = (x, y);
@@ -427,6 +418,16 @@ impl WinitRegionSelector {
                             self.start = (x, y);
                             self.curr = (x, y);
                         }
+                        if let Some(w) = self.window.as_ref() {
+                            if !self.redraw_pending {
+                                self.redraw_pending = true;
+                                w.request_redraw();
+                            }
+                        }
+                    }
+                    WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                        // 系统缩放变化时更新缓存 scale
+                        self.scale = scale_factor;
                         if let Some(w) = self.window.as_ref() {
                             if !self.redraw_pending {
                                 self.redraw_pending = true;
@@ -485,6 +486,7 @@ impl WinitRegionSelector {
             shift_down: false,
             alt_down: false,
             redraw_pending: false,
+            scale: 1.0,
         };
 
         if let Err(e) = event_loop.run_app(&mut app) {

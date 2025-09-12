@@ -1,4 +1,11 @@
 {
 	"version": "2.0.0",
-	"tasks": []
+	"tasks": [
+		{
+			"label": "fmt + build workspace",
+			"type": "shell",
+			"command": "cargo fmt && cargo build --workspace",
+			"group": "build"
+		}
+	]
 }
