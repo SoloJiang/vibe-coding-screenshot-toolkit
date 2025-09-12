@@ -3,8 +3,7 @@
 ## 范围与职责
 提供截图/标注编辑核心领域模型与纯逻辑：Screenshot/Frame/Annotation/UndoStack/History 内存结构、错误类型、几何与对齐算法、命名模板解析、公共 trait（Renderer/ExportEncoder 接口定义）等。
 
-MVP 使用子集：AnnotationKind(Rect/Arrow/Text)，Undo 合并策略，HistoryItem + 裁剪，命名模板。
-延后启用：对齐吸附（若 UI 暂未集成可保留算法）、更多 AnnotationKind、性能基准、动态注册机制。
+当前使用子集：AnnotationKind(Rect/Arrow/Text)，Undo 合并策略，HistoryItem + 裁剪，命名模板。
 
 ## 依赖与被依赖
 - 依赖：标准库、uuid、serde（模型序列化）、thiserror
@@ -42,9 +41,11 @@ ErrorKind: Permission, Capture, IO, Upload, Ocr, Hook, Config, Validation, Priva
 ## 并发与线程安全
 核心结构使用 Arc + 内部不做锁（编辑流程由上层串行保证）。
 
-## 测试计划
-MVP：Undo 合并策略；命名模板解析；History 裁剪；Annotation 序列化基本往返。
-Later：吸附算法集成测试；性能基准 (Undo / 模板解析)；动态扩展注册。
+## 测试
+- Undo 合并策略
+- 命名模板解析
+- History 裁剪
+- Annotation 序列化往返
 
 ## 风险与缓解
 | 风险 | 缓解 |
@@ -52,6 +53,4 @@ Later：吸附算法集成测试；性能基准 (Undo / 模板解析)；动态�
 | Undo 合并错误导致状态错乱 | 严格快照前后对比单测 |
 | 模板解析性能不足 | 预编译正则 + LRU 模板缓存 |
 
-## 未来扩展
-- Annotation 子类型外挂扩展 (宏派生)
-- 历史索引增加模糊搜索评分
+注：吸附/对齐、更多 AnnotationKind、动态扩展注册与性能基准等不在当前范围。

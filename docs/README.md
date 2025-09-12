@@ -9,10 +9,10 @@ docs/
     prd.md
   tech_design/
     overview.md
-    core.md infra.md renderer.md services.md api_cli.md api_napi.md 
+    core.md infra.md renderer.md services.md api_cli.md api_napi.md
     platform_mac.md platform_win.md ocr_adapter.md privacy.md macros.md
   todo/
-    core.md infra.md renderer.md services.md api_cli.md api_napi.md 
+    core.md infra.md renderer.md services.md api_cli.md api_napi.md
     platform_mac.md platform_win.md ocr_adapter.md privacy.md macros.md
 ```
 
@@ -48,10 +48,10 @@ docs/
 - Macros: [todo/macros.md](./todo/macros.md)
 
 ## 维护约定 Maintenance
-- **新增模块**：同时添加 `tech_design/<module>.md` 与 `todo/<module>.md`。
-- **重大架构调整**：先更新 overview，再更新具体模块文件，以减少上下文漂移。
-- **任务管理**：`todo/` 列表保持短期可执行，历史完成项可定期归档到变更日志 / release notes。
-- **命名规范**：所有文件使用 snake_case 命名，模块名对应 crate 名称。
+- 文档仅描述“当前实现状态”；规划与路线请移至 issue/PR 讨论。
+- 新增模块：同时添加 `tech_design/<module>.md` 与 `todo/<module>.md`。
+- 重大架构调整：先更新 overview 再更新各模块文档，保持一致性。
+- 命名规范：snake_case；模块名对齐 crate。
 
 ## 使用指南 Usage Guidelines
 1. **查看产品需求**：从 `prd/prd.md` 了解功能规格和验收标准。
@@ -60,9 +60,8 @@ docs/
 4. **贡献文档**：更新对应模块文档时，保持 PRD、技术设计、TODO 的一致性。
 
 ## 文档状态 Document Status
-- ✅ **PRD**: 完整产品功能规格 
-- ✅ **技术设计**: 各模块架构设计已建立
-- ✅ **TODO 任务**: 各模块任务列表已初始化
-- 🔄 **持续更新**: 随开发进度动态维护
+- ✅ PRD/MVP 范围与验收标准
+- ✅ 技术设计已覆盖核心模块
+- ✅ TODO 列表在持续维护
 
 English readers: see structure above; Chinese files can be machine‑translated if needed. Core code is English‑centric for identifiers.

@@ -1,20 +1,18 @@
 # platform_win 模块技术设计
 
 ## 职责
-Windows 捕获/窗口/剪贴板/快捷键 (WGC + Win32)。
+Windows 平台相关接口的占位与抽象。
 
-## MVP 子集
-允许使用占位 Stub：暂仅返回 Unsupported（主流程先以 mac 验收）。
-或可选最简 GDI 全屏截屏（如后续需要快速验证多平台）。
+## 能力
+提供占位实现：返回 Unsupported，以便主流程在 macOS 完成验收。
 
-## 延后
-WGC/D3D11 管线、窗口/区域捕获、剪贴板、快捷键、性能优化。
+注：WGC/D3D11 管线、窗口/区域捕获、剪贴板、快捷键等不在当前范围。
 
 ## 捕获策略
-WGC -> ID3D11Texture2D -> staging -> Map -> BGRA；区域裁剪。
+暂无（仅占位）。
 
 ## 组件
-WinScreenCapturer, DisplayInfoProviderWin, ClipboardWin, HotkeyRegistrarWin。
+占位模块及错误映射。
 
 ## 风险
 | 风险 | 缓解 |

@@ -1,16 +1,19 @@
 # api_cli 模块技术设计
 
 ## 职责
-基准/诊断 CLI。
+提供开发与验证用的命令行入口，串起捕获/裁剪/导出/历史等核心流程。
 
 ## 命令
-MVP: capture, capture-region (最小导出)。
-Later: capture-bench, export-demo, ocr-bench, diag。
+- capture：全屏截图
+- capture-region：按给定 rect 裁剪
+- capture-interactive：GUI 选区后裁剪
+- metrics：导出进程内指标文本
 
 ## 输出
-JSON 基准统计 avg/p95。
+- 标准输出打印关键结果（如保存路径、错误信息）。
+- `metrics` 输出文本指标。
 
 ## 风险
 | 风险 | 缓解 |
 |------|------|
-| 基准波动 | 预热+多样本 |
+| 终端权限/屏幕录制权限不足 | 明确报错并提示授权路径 |
