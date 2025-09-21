@@ -40,11 +40,23 @@ pub fn virtual_to_window_coords(
         let final_x1 = local_x1.max(0) as usize;
         let final_y1 = local_y1.max(0) as usize;
 
-        println!(
-            "🐛 坐标转换: 虚拟({},{},{},{}) 窗口位置({},{}) -> 本地({},{},{},{}) -> 最终({},{},{},{})",
-            vx0, vy0, vx1, vy1, virtual_x, virtual_y,
-            local_x0, local_y0, local_x1, local_y1,
-            final_x0, final_y0, final_x1, final_y1
+        #[cfg(debug_assertions)]
+        tracing::debug!(
+            "坐标转换: 虚拟({},{},{},{}) 窗口位置({},{}) -> 本地({},{},{},{}) -> 最终({},{},{},{})",
+            vx0,
+            vy0,
+            vx1,
+            vy1,
+            virtual_x,
+            virtual_y,
+            local_x0,
+            local_y0,
+            local_x1,
+            local_y1,
+            final_x0,
+            final_y0,
+            final_x1,
+            final_y1
         );
 
         (final_x0, final_y0, final_x1, final_y1)

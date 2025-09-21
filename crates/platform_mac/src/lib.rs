@@ -290,8 +290,9 @@ impl MacCapturer {
             let canvas_x = (display_info.x - bounds.min_x) as u32;
             let canvas_y = (display_info.y - bounds.min_y) as u32;
 
-            println!(
-                "🐛 显示器合成: 显示器{}({},{}) -> canvas({},{}) 尺寸{}x{}",
+            #[cfg(debug_assertions)]
+            tracing::debug!(
+                "显示器合成: 显示器{}({},{}) -> canvas({},{}) 尺寸{}x{}",
                 monitor_id,
                 display_info.x,
                 display_info.y,
@@ -344,19 +345,28 @@ impl MacCapturer {
         let virtual_frame = &virtual_screenshot.raw.primary;
 
         // 添加调试信息
-        println!(
-            "🐛 虚拟桌面调试: 尺寸 {}x{}",
-            virtual_frame.width, virtual_frame.height
-        );
-        println!(
-            "🐛 虚拟桌面调试: 显示器数量 {}",
-            virtual_desktop.displays.len()
-        );
-        for (i, display) in virtual_desktop.displays.iter().enumerate() {
-            println!(
-                "🐛 显示器 {}: 位置({}, {}), 尺寸{}x{}, 主屏={}",
-                i, display.x, display.y, display.width, display.height, display.is_primary
+        #[cfg(debug_assertions)]
+        {
+            tracing::debug!(
+                "虚拟桌面调试: 尺寸 {}x{}",
+                virtual_frame.width,
+                virtual_frame.height
             );
+            tracing::debug!(
+                "虚拟桌面调试: 显示器数量 {}",
+                virtual_desktop.displays.len()
+            );
+            for (i, display_info) in virtual_desktop.displays.iter().enumerate() {
+                tracing::debug!(
+                    "显示器 {}: 位置({}, {}), 尺寸{}x{}, 主屏={}",
+                    i,
+                    display_info.x,
+                    display_info.y,
+                    display_info.width,
+                    display_info.height,
+                    display_info.is_primary
+                );
+            }
         }
 
         // 将RGBA转换为RGB用于ui_overlay
@@ -422,33 +432,53 @@ impl MacCapturer {
         let ch = canvas_y2.saturating_sub(canvas_y);
 
         // 添加详细调试信息
-        println!("🐛 详细裁剪调试:");
-        println!(
-            "  输入Region: ({}, {}, {}, {})",
-            rect.x, rect.y, rect.w, rect.h
-        );
-        println!("  虚拟坐标: ({}, {}, {}, {})", x_virtual, y_virtual, w, h);
-        println!(
-            "  虚拟边界: min({}, {}), max({}, {})",
-            bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y
-        );
-        println!(
-            "  Canvas计算: ({} - {}) = {}, ({} - {}) = {}",
-            x_virtual, bounds.min_x, canvas_x, y_virtual, bounds.min_y, canvas_y
-        );
-        println!(
-            "  最终Canvas区域: ({}, {}, {}, {})",
-            canvas_x, canvas_y, cw, ch
-        );
-        println!(
-            "  虚拟桌面尺寸: {}x{}",
-            virtual_frame.width, virtual_frame.height
-        );
-
-        println!(
-            "🐛 裁剪调试: canvas坐标({}, {}, {}, {})",
-            canvas_x, canvas_y, cw, ch
-        );
+        #[cfg(debug_assertions)]
+        {
+            tracing::debug!("详细裁剪调试:");
+            tracing::debug!(
+                "  输入Region: ({}, {}, {}, {})",
+                rect.x,
+                rect.y,
+                rect.w,
+                rect.h
+            );
+            tracing::debug!("  虚拟坐标: ({}, {}, {}, {})", x_virtual, y_virtual, w, h);
+            tracing::debug!(
+                "  虚拟边界: min({}, {}), max({}, {})",
+                bounds.min_x,
+                bounds.min_y,
+                bounds.max_x,
+                bounds.max_y
+            );
+            tracing::debug!(
+                "  Canvas计算: ({} - {}) = {}, ({} - {}) = {}",
+                x_virtual,
+                bounds.min_x,
+                canvas_x,
+                y_virtual,
+                bounds.min_y,
+                canvas_y
+            );
+            tracing::debug!(
+                "  最终Canvas区域: ({}, {}, {}, {})",
+                canvas_x,
+                canvas_y,
+                cw,
+                ch
+            );
+            tracing::debug!(
+                "  虚拟桌面尺寸: {}x{}",
+                virtual_frame.width,
+                virtual_frame.height
+            );
+            tracing::debug!(
+                "裁剪调试: canvas坐标({}, {}, {}, {})",
+                canvas_x,
+                canvas_y,
+                cw,
+                ch
+            );
+        }
 
         if cw == 0 || ch == 0 {
             anyhow::bail!("empty crop region");

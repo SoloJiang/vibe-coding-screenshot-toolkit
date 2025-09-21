@@ -133,8 +133,12 @@ impl SelectionApp {
                 return;
             }
 
-            // 为窗口创建 Pixels
+            // 安全地创建 Pixels - 由于应用程序的设计，窗口的生命周期
+            // 与整个应用程序相同，因此这个转换在实际使用中是安全的
             let window_ref: &'static Window = unsafe {
+                // SAFETY: 这里的 unsafe 是由于 pixels 库的设计限制。
+                // 在我们的应用程序中，窗口的生命周期与 SelectionApp 相同，
+                // 并且 pixels 对象只在窗口有效期间使用，因此这个转换是安全的。
                 &*(self.window_manager.windows[window_index].window.as_ref() as *const Window)
             };
             let surface = SurfaceTexture::new(size_px.width, size_px.height, window_ref);
@@ -388,23 +392,8 @@ impl ApplicationHandler for SelectionApp {
                 }
             }
 
-            // 为每个窗口初始化 Pixels，预热渲染，然后再显示
+            // 为每个窗口预热渲染，然后再显示
             for i in 0..self.window_manager.windows.len() {
-                // 初始化 Pixels
-                if self.window_manager.windows[i].pixels.is_none() {
-                    let size_px = self.window_manager.windows[i].size_px;
-                    if size_px.width > 0 && size_px.height > 0 {
-                        let window_ref: &'static Window = unsafe {
-                            &*(self.window_manager.windows[i].window.as_ref() as *const Window)
-                        };
-                        let surface =
-                            SurfaceTexture::new(size_px.width, size_px.height, window_ref);
-                        if let Ok(p) = Pixels::new(size_px.width, size_px.height, surface) {
-                            self.window_manager.windows[i].pixels = Some(p);
-                        }
-                    }
-                }
-
                 // 预热渲染 - 先渲染一帧再显示窗口，避免闪动
                 self.render_window_by_index(i);
                 self.window_manager.windows[i].window.set_visible(true);

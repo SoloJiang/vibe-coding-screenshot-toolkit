@@ -9,7 +9,7 @@ use winit::window::Window;
 ///
 /// 包含每个窗口的渲染器、尺寸、缩放比例和虚拟位置信息
 pub struct WindowInfo {
-    /// 窗口实例
+    /// 窗口实例 - 使用 Box 避免在栈上分配大对象，因为 winit::Window 包含平台特定的大量状态
     pub window: Box<Window>,
     /// 像素渲染器，用于窗口内容渲染
     pub pixels: Option<Pixels<'static>>,
