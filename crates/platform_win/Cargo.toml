@@ -6,3 +6,9 @@ edition = "2021"
 [dependencies]
 tracing = { workspace = true }
 screenshot_core = { path = "../core" }
+services = { path = "../services" }
+ui_overlay = { path = "../ui_overlay" }
+infra = { path = "../infra" }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

@@ -1,126 +1,129 @@
 # Screenshot Toolkit
 
-> Cross‑platform (macOS / Windows roadmap) screenshot capture & annotation engine. Focused on precise models, predictable rendering, and efficient export.
+> 跨平台截图与标注工具，专注交互式截图体验，支持多显示器环境。
 
 [中文文档 README.zh-CN.md](./README.zh-CN.md)
 
-## Highlights
-- Shapes: Rect, Highlight (Multiply/Screen), Arrow (solid/dashed), Mosaic, Freehand (Chaikin smoothing, solid), Text placeholder blocks
-- Rendering: CPU RGBA composition, alpha blending, blend modes (Multiply / Screen), dashed strokes, stroke + fill, smoothing passes
+## 核心特性
+- **交互式截图**：通过自研 GUI 区域选择器精确选择截图区域
+- **多种截图模式**：支持全屏、区域和交互式选择截图
+- **标注功能**：矩形、箭头、文本等多种标注工具，支持撤销/重做
+- **跨平台支持**：macOS 完整支持，Windows 开发中
+- **多显示器支持**：支持多显示器环境下的截图和跨显示器区域选择
+- **高质量导出**：PNG 格式输出和系统剪贴板集成
+- **智能命名**：基于时间和序列的自动文件命名
 
-# Screenshot Toolkit
+## 项目架构
 ```
 crates/
-  core/           # Core models, annotation types, undo stack, naming templates
-  infra/          # Infrastructure: metrics, panic hook, LRU cache, path resolution
-  renderer/       # CPU RGBA composition, blend modes, shape rendering
-  services/       # Business logic orchestration (capture, annotate, export, history)
-  platform_mac/   # macOS capture via xcap (>=0.7), clipboard integration
-  platform_win/   # Windows capture (placeholder/stub for now)
-  ui_overlay/     # Self-developed region selector
-  api_cli/        # CLI interface with capture commands and interactive selection
-  api_napi/       # Node.js bindings (placeholder for future)
-Docs live under `docs/`:
-- `docs/prd` MVP scope and acceptance
-- `docs/tech_design` technical designs per crate + overview
-- `docs/todo` per‑module task lists
-Docs live under `docs/`:
-- `docs/prd` product requirements
-- `docs/tech_design` technical designs per crate + overview
-- `docs/todo` per‑module task lists
+  core/           # 核心数据模型、标注类型、撤销栈、命名模板
+  platform_mac/   # macOS 截图和剪贴板实现 (基于 xcap)
+  platform_win/   # Windows 截图和剪贴板实现 (开发中)
+  ui_overlay/     # 交互式区域选择器
+  services/       # 业务逻辑：捕获、标注、导出、历史
+  renderer/       # CPU 渲染引擎，支持标注合成
+  api_cli/        # 命令行接口
+  infra/          # 基础设施：指标、缓存、路径解析
+```
 
-## Quick Start
-Run all tests:
+技术文档位于 `docs/` 目录：
+- `docs/prd/` - 产品需求文档
+- `docs/tech_design/` - 技术设计文档
+- `docs/todo/` - 开发任务列表## 快速开始
+
+### 构建项目
 ```sh
+cargo build --workspace
 cargo test --workspace
 ```
 
-### Status
-End-to-end loop for capture → annotate → render → export is implemented. Interactive region selection is available via a custom GUI overlay.
-- Capture: Full screen and region (xcap on macOS; multi–monitor via `--all`)
-- Interactive selection: Region selection via custom GUI overlay
-- Annotations: Rect / Arrow / Text with Undo/Redo and z‑order controls
-- Export: PNG to file and macOS clipboard (NSPasteboard); JPEG encoder present
-- Naming: Template `{date},{seq},{screen}` with per‑day sequence persistence
-- History: Recent 50 items with thumbnails (JSONL persistence, auto‑trim)
-- CLI: `capture`, `capture-region`, `capture-interactive`, `metrics`
-- Infra: Metrics, panic hook, LRU cache, path resolution
-- **Naming**: Template `{date},{seq},{screen}` with cross-process persistent daily sequence
-- **History**: Recent 50 items with thumbnails (JSONL persistence, auto-trim by capacity)
-- **CLI**: Complete commands: `capture`, `capture-region`, `capture-interactive`, `metrics`
-- **Infrastructure**: Metrics framework, panic hook, LRU cache, path resolution
+### 使用方法
 
-Pre-implemented features (ready for future use): Highlight / Mosaic / Freehand annotations.
-
-### CLI Usage
-Full screen capture:
-```sh
-cargo run -p api_cli -- capture -d shots
-cargo run -p api_cli -- capture --all -d multi_screen  # Multi-monitor support
-```
-
-Region capture:
-```sh
-# Select region via the custom GUI overlay and save PNG
-```
-
-Interactive selection:
+**交互式截图**（推荐）：
 ```sh
 cargo run -p api_cli -- capture-interactive -d shots
-# Use the GUI selector to choose region and save PNG
 ```
 
-Mock mode (for testing without screen permissions):
+**全屏截图**：
 ```sh
-cargo run -p api_cli -- capture -d shots --mock
+cargo run -p api_cli -- capture -d shots
+cargo run -p api_cli -- capture --all -d shots  # 多显示器
 ```
 
-View metrics:
+**区域截图**：
 ```sh
-tail -n 3 shots/.history/history.jsonl
+cargo run -p api_cli -- capture-region --rect 100,100,800,600 -d shots
 ```
 
-Thumbnails are embedded (PNG bytes length) inside each JSONL line `thumb` field.
-Sequence persistence: per-output directory a `.history/seq.txt` stores `YYYYMMDD <last_seq>` so restarts keep increasing within the same day.
-```
-Thumbnails are embedded (base64-safe PNG bytes length) inside each JSONL line `thumb` field.
-Sequence persistence: per-output directory a `.history/seq.txt` stores `YYYYMMDD <last_seq>` so restart keeps increasing within the same day.
-Optional (future) features:
-- `node` (N-API bindings)
-- `simd_opt` (SIMD accelerated blend / mosaic)
+### 项目状态
+- ✅ **交互式截图**：完整实现，包含自研 GUI 区域选择器
+- ✅ **基础截图模式**：全屏和区域截图支持
+- ✅ **标注系统**：矩形、箭头、文本标注，支持撤销/重做
+- ✅ **多显示器基础支持**：可识别多个显示器
+- ✅ **PNG 导出**：高质量 PNG 格式输出
+- ✅ **剪贴板集成**：支持 macOS 系统剪贴板
+- ✅ **智能命名**：基于时间模板的自动文件命名
+- ✅ **跨平台架构**：macOS 完整支持，Windows 框架就绪
+- 🚧 **跨显示器选择**：规划中
+- 🚧 **Windows 实现**：开发中
+- 🚧 **高级标注**：高亮、马赛克、自由笔等
 
-## Roadmap
-- [x] Core / Renderer foundation
-- [x] Basic annotations: Rect / Arrow / Text with Undo/Redo
-- [x] Advanced annotations: Highlight / Mosaic / Freehand / Dashed strokes
-- [x] PNG & JPEG export with quality control
-- [x] Multi-monitor capture support
-- [x] Cross-process sequence persistence
-- [x] History system with thumbnails
-- [x] Infrastructure: metrics, panic handling, caching
-- [ ] Interactive region selection GUI
-- [ ] Font rasterization (fontdue integration)
-- [ ] Snapshot baseline pixel tests
-- [ ] DirtyRect / SIMD optimization
-- [ ] OCR + Privacy suggested regions
+## 技术特点
 
-## Contributing
-1. Update related `docs/tech_design/*.md` when changing architecture.
-2. Add or adjust tests for new rendering behavior.
-3. Keep public APIs minimal & stable; document feature flags.
+### 截图能力
+- 交互式区域选择：自研 GUI 覆盖层，支持精确的区域选择
+- 全屏截图：支持单显示器和多显示器模式
+- 区域截图：指定坐标进行精确截图
+- 多显示器支持：自动检测所有连接的显示器
 
-## License
-MIT (see LICENSE)
-- [ ] GPU backend prototype
-- [ ] Windows platform implementation
-- [ ] Node.js API bindings
+### 标注系统
+- 矩形标注：支持自定义颜色、线宽、圆角
+- 箭头标注：实线/虚线样式，可调节箭头大小
+- 文本标注：可定制字体、大小、颜色
+- 撤销/重做：完整的操作历史管理
+- 图层管理：z-index 排序，锁定/解锁
 
-## Contributing
-1. Update related `docs/todo/<crate>.md` before large changes.
-2. Add or adjust tests for new rendering behavior.
-3. Keep public APIs minimal & stable; document feature flags.
+### 跨平台架构
+- macOS：完整实现，基于 xcap 和 NSPasteboard
+- Windows：框架就绪，待具体实现
+- 统一接口：平台特定实现对上层透明
 
-## License
-MIT (see LICENSE)
+### 高效渲染
+- CPU 渲染引擎，无 GPU 依赖
+- 高质量 PNG 输出和 JPEG 支持
+- 集成系统剪贴板
+- 智能文件命名和历史管理
 
-Coder: GPT5/Claude 4
+## 开发路线图
+
+### 当前版本 (v0.1)
+- ✅ 交互式截图核心功能
+- ✅ 基础标注系统
+- ✅ macOS 平台完整支持
+- ✅ 多显示器基础架构
+
+### 下一步 (v0.2)
+- [ ] Windows 平台完整实现
+- [ ] 增强多显示器体验
+  - [ ] 显示器边界可视化
+  - [ ] 跨显示器区域选择
+- [ ] 高级标注功能
+  - [ ] 高亮模式（Multiply/Screen）
+  - [ ] 马赛克遮罩
+  - [ ] 自由笔绘制
+
+### 未来计划 (v0.3+)
+- [ ] 标注编辑器 UI
+- [ ] 历史记录管理界面
+- [ ] 性能优化和 GPU 加速
+- [ ] 插件系统和扩展 API
+
+## 贡献指南
+1. 架构变更请同步更新 `docs/tech_design/` 中的相关文档
+2. 新功能需要添加相应的测试
+3. 保持 API 简洁稳定，记录功能标志
+4. 遵循模块边界，避免循环依赖
+
+## 许可证
+MIT (详见 LICENSE 文件)
+

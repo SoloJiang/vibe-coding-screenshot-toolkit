@@ -2997,8 +2997,14 @@ dependencies = [
 name = "platform_win"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "chrono",
+ "infra",
  "screenshot_core",
+ "services",
  "tracing",
+ "ui_overlay",
+ "uuid",
 ]
 
 [[package]]

@@ -1,44 +1,41 @@
 # ui_overlay TODO
 
-## MVP
-- [x] 定义基础 API：Region / RegionSelector / 错误类型
-- [x] 集成 platform_mac：`MacCapturer::capture_region_interactive_custom` 使用 `RegionSelector`
-- [x] CLI 接线：`capture-interactive` 调用 `create_gui_region_selector`
-- [ ] 集成 services：RegionSelectService 使用 ui_overlay（后续 PR）
-- [ ] 为 renderer/export 提供区域像素裁剪适配（由 services 完成）
+## 当前状态
+- ✅ 基础交互式选择器：Region / RegionSelector / 错误类型
+- ✅ platform_mac 集成：MacCapturer 使用 RegionSelector
+- ✅ CLI 集成：capture-interactive 命令
+- ✅ 性能优化：预热渲染、背景暗化缓存、重绘节流
 
-## 细化与增强
-- [x] 半透明蒙层 + 描边绘制（pixels）
-- [x] 移除 mac_selector，统一 `selector`（winit + pixels）实现
-- [x] 兼容 winit 0.30：完成迁移到 ApplicationHandler/run_app，消除旧 API 警告；消除了 Pixels 生命周期/自引用问题
-- [x] 键盘快捷：Shift 固定比例、Alt 从中心、方向键 n 像素移动、ESC 取消
-- [x] 平台胶水隔离：新增 `platform` 模块封装 macOS 呈现设置（隐藏菜单栏/Dock），核心选择器减少条件编译
-- [ ] 多显示器支持：选择跨屏坐标与 scale 处理
-- [ ] 吸附：对齐屏幕边/网格/窗口（可选）
-- [ ] 可配置主题/颜色/线宽
-- [ ] 点击穿透/置顶策略（Win 专项）
+## 多显示器支持增强 (优先级 M1)
+- [ ] 跨显示器选择器：MultiDisplayRegionSelector 实现
+- [ ] 虚拟桌面覆盖：为所有显示器创建覆盖窗口
+- [ ] 坐标系统统一：虚拟桌面与显示器相对坐标转换
+- [ ] 显示器边界可视化：在边界处显示分割线或提示信息
+- [ ] 事件同步：多窗口间的输入事件协调
+
+## 用户体验优化 (优先级 M2)
+- [ ] 选择器主题：可配置颜色、线宽、透明度
+- [ ] 键盘快捷键扩展：更多便捷操作
+- [ ] 实时预览：选择区域内容的放大预览
+- [ ] 网格吸附：可选的网格对齐功能
+- [ ] 尺寸标尺：显示选择区域的像素尺寸
+
+## 技术改进 (优先级 M3+)
+- [ ] GPU 渲染：使用 GPU 加速渲染
+- [ ] 动画效果：平滑的选择框动画
+- [ ] 窗口穿透：特定平台的窗口穿透支持
+- [ ] 自定义渲染器：支持自定义选择器外观
+
+## 移除的功能（当前不需要）
+- 暂无需要移除的功能，当前实现已专注于交互式选择
 
 ## 文档/测试
-- [x] 技术设计文档 `docs/tech_design/ui_overlay.md`
-- [x] 更新文档以反映 `platform` 模块抽象
-- [x] README 更新（根与 crate）
-- [x] 示例删除与 Changelog 记录（内部记录）
+- ✅ 技术设计文档更新
+- [ ] 用户使用指南
+- [ ] 性能测试套件
+- [ ] 多平台兼容性测试
 
 ## 已解决问题记录
-- [x] macOS “Context leak detected, msgtracer returned -1” 日志反复出现：
-	- 现象：运行交互截图时系统日志持续输出 context leak 警告，且最终交互返回取消。
-	- 根因：每帧创建 Pixels/SurfaceTexture 导致 CA/Metal 上下文频繁构造，AppKit 检测到资源未及时释放。
-	- 修复：窗口创建后构建并复用单个 Pixels；窗口尺寸变化时 resize_surface；字段顺序保证 drop 次序先 Pixels 再 Window。使用 Box<Window> 与受控 'static 引用，确保生命周期安全。
-
-- [x] 首次交互卡顿明显：
-	- 现象：第一次触发框选时卡顿，选择框出现后流畅。
-	- 根因：首次交互触发时才初始化 pixels/wgpu 与首次渲染。
- 	- 修复：窗口初始不可见；在 resumed 中创建窗口后立即 ensure_pixels 并 render_once 预热，再显示窗口；移除空闲时的持续 request_redraw，改为按需重绘。
-
-- [x] 拖动选择框存在卡顿（CPU 占用偏高）：
-	- 现象：持续拖动时帧率不稳定，CPU 使用上升。
-	- 根因：每帧对整屏逐像素进行暗化计算（对 frame 做 per-pixel alpha 混合），加之高频 CursorMoved 事件导致重复 request_redraw，造成冗余计算。
-	- 修复：
-		- 预先根据背景 `bg` 生成一次性“变暗背景”缓冲（`bg_dim`），渲染帧直接 memcpy；
-		- 选区内从原始 `bg` 恢复（逐行拷贝），避免对全屏进行 per-pixel 计算；
-		- 增加 `redraw_pending` 标志，合并高频重绘请求，防止同一帧多次 request_redraw。
+- ✅ macOS context leak 警告：通过复用 Pixels 实例解决
+- ✅ 首次交互卡顿：通过预热渲染解决  
+- ✅ 拖动卡顿：通过背景缓存和重绘节流解决

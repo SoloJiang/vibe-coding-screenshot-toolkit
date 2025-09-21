@@ -13,6 +13,12 @@ crate 暴露：
 - 扩展方法 `select_with_background(&self, rgb, width, height) -> Result<Option<Region>>`：默认包装 `select()`；平台可利用背景预览（如 macOS 集成）。
 - `MockSelector`：无 UI，返回固定 Region 或 Cancelled，便于测试。
 
+### 多显示器接口扩展
+- `MultiDisplayRegionSelector`：专门处理多显示器环境的选择器
+- `VirtualDesktopBounds`：虚拟桌面边界信息结构体
+- `CrossDisplayRegion`：跨显示器区域的描述，包含影响的显示器列表
+- `select_cross_display(&self, displays: &[DisplayInfo]) -> Result<Option<CrossDisplayRegion>>`：多显示器区域选择接口
+
 ## 事件与交互
 - 鼠标左键拖拽：绘制/调整矩形。
 - Enter/Space：确认；Esc：取消。
@@ -22,6 +28,12 @@ crate 暴露：
 - `x,y,w,h` 为逻辑坐标（winit 的 logical）；`scale = window.scale_factor()`。
 - 裁剪像素矩形时应使用：`px = round(x*scale) ...`，并对边界做 clamp。
 
+### 多显示器坐标系统
+- **虚拟桌面坐标**：以主显示器左上角为原点的全局坐标系
+- **显示器相对坐标**：每个显示器内部的局部坐标系
+- **跨显示器区域**：使用虚拟桌面坐标描述跨越多个显示器的区域
+- **DPI 适配**：自动处理不同显示器间的 DPI 差异和缩放
+
 ## 平台实现
 - 统一采用 `winit + pixels` 的跨平台实现，文件：`crates/ui_overlay/src/selector.rs`。
 - 渲染：在 `pixels` 帧缓冲中绘制真实桌面截图背景、选区外暗化、选区白色描边，选区内部保持透明效果。
@@ -29,6 +41,13 @@ crate 暴露：
 - macOS：通过 Cocoa API（仅在 macOS 分支编译）设置 NSWindow 为无边框、不可拖动、提升窗口层级、隐藏 Dock 和菜单栏，并将窗口 frame 设置为整个屏幕区域（非 visibleFrame），确保完全覆盖。
 - Windows：使用同一套 winit 事件与 pixels 渲染路径；可选增强为窗口置顶与穿透。
  - 启动性能优化：窗口初始不可见（with_visible(false)），创建后立即预热 Pixels（ensure_pixels + render_once），再显示并 request_redraw；空闲阶段不进行持续重绘（about_to_wait 不再 request_redraw），仅在输入/尺寸变化时重绘。
+
+### 多显示器渲染架构
+- **全局覆盖**：在所有显示器上创建全屏覆盖窗口
+- **窗口管理**：为每个显示器创建独立的 winit 窗口实例
+- **事件同步**：统一处理来自不同显示器窗口的输入事件
+- **跨窗口渲染**：支持绘制跨越多个显示器的选择区域
+- **边界可视化**：在显示器边界处显示分割线或提示信息
 
 ### 渲染性能与拖动优化
 - 背景暗化策略：

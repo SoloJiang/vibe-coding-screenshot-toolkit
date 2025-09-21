@@ -1,111 +1,131 @@
 # Screenshot Toolkit
 
-> 多平台（macOS，Windows 进行中）截图与标注引擎。聚焦可靠捕获、可预测渲染与高效导出。
+> 跨平台截图与标注工具，专注交互式截图体验，支持多显示器环境。
 
 [English README](./README.md)
 
-## 已实现特性
-- 标注：矩形 / 箭头（含虚线）/ 文本占位；预置类型（高亮/马赛克/自由手绘）已在模型层就绪
-- 渲染：CPU RGBA 合成，混合模式 Multiply / Screen，虚线、描边、平滑
-- 导出：PNG（内置 JPEG 编码器），macOS 剪贴板复制
-- 撤销/重做：合并策略，UUID v7 序列
+## 核心特性
+- **交互式截图**：通过自研 GUI 区域选择器精确选择截图区域
+- **多种截图模式**：支持全屏、区域和交互式选择截图
+- **标注功能**：矩形、箭头、文本等多种标注工具，支持撤销/重做
+- **跨平台支持**：macOS 完整支持，Windows 开发中
+- **多显示器支持**：支持多显示器环境下的截图和跨显示器区域选择
+- **高质量导出**：PNG 格式输出和系统剪贴板集成
+- **智能命名**：基于时间和序列的自动文件命名
 
-## 目录结构
+## 项目架构
 ```
 crates/
-  core/           # 核心模型、标注类型、撤销栈、命名模板
-  infra/          # 基础设施：指标、panic 处理、LRU 缓存、路径解析
-  renderer/       # CPU RGBA 合成、混合模式、形状渲染
-  services/       # 业务逻辑编排（捕获、标注、导出、历史）
-  platform_mac/   # macOS 捕获（基于 xcap 0.7+）、剪贴板集成
-  platform_win/   # Windows 捕获（占位/桩实现）
-  ui_overlay/     # 自研 GUI 区域选择器
-  api_cli/        # CLI 接口，含截图命令和交互式选择
-  api_napi/       # Node.js 绑定（规划中）
-  ocr_adapter/    # OCR 集成（规划中）
-  privacy/        # 隐私扫描与遮罩（规划中）
-  macros/         # 派生宏（规划中）
+  core/           # 核心数据模型、标注类型、撤销栈、命名模板
+  platform_mac/   # macOS 截图和剪贴板实现 (基于 xcap)
+  platform_win/   # Windows 截图和剪贴板实现 (开发中)
+  ui_overlay/     # 交互式区域选择器
+  services/       # 业务逻辑：捕获、标注、导出、历史
+  renderer/       # CPU 渲染引擎，支持标注合成
+  api_cli/        # 命令行接口
+  infra/          # 基础设施：指标、缓存、路径解析
 ```
-文档：`docs/prd` MVP 范围与验收；`docs/tech_design` 技术设计；`docs/todo` 模块任务。
+
+技术文档位于 `docs/` 目录：
+- `docs/prd/` - 产品需求文档
+- `docs/tech_design/` - 技术设计文档
+- `docs/todo/` - 开发任务列表
 
 ## 快速开始
+
+### 构建项目
 ```sh
+cargo build --workspace
 cargo test --workspace
-cargo build -p renderer
 ```
 
-### 状态
-已完成捕获 → 标注 → 渲染 → 导出闭环；提供自研 GUI 交互式区域选择。
-- 截图：全屏与区域（macOS 基于 xcap；多显示器 `--all`）
-- 交互选择：自研 GUI Overlay 选区
-- 标注：矩形 / 箭头 / 文本，支持撤销/重做与图层顺序
-- 导出：PNG 文件与 macOS 剪贴板（NSPasteboard）；可用 JPEG 编码器
-- 命名：`{date},{seq},{screen}`，按天序列持久化
-- 历史：最近 50 条（JSONL + 缩略图，自动裁剪）
-- CLI：`capture`、`capture-region`、`capture-interactive`、`metrics`
-- 基础：指标、panic、LRU、路径解析
+### 使用方法
 
-### CLI 示例
-全屏截图：
-```sh
-cargo run -p api_cli -- capture -d shots
-cargo run -p api_cli -- capture --all -d multi_screen  # 多显示器支持
-```
-
-区域截图：
-```sh
-cargo run -p api_cli -- capture-region --rect 100,120,400,300 -d shots
-```
-
-交互式选择：
+**交互式截图**（推荐）：
 ```sh
 cargo run -p api_cli -- capture-interactive -d shots
-# 使用 GUI 选择器选择区域并保存 PNG
 ```
 
-模拟模式（无权限测试）：
+**全屏截图**：
 ```sh
-cargo run -p api_cli -- capture -d shots --mock
+cargo run -p api_cli -- capture -d shots
+cargo run -p api_cli -- capture --all -d shots  # 多显示器
 ```
 
-查看指标：
+**区域截图**：
 ```sh
-cargo run -p api_cli -- metrics
+cargo run -p api_cli -- capture-region --rect 100,100,800,600 -d shots
 ```
 
-检查结果：
-```sh
-ls shots/*.png
-tail -n 3 shots/.history/history.jsonl
-cat shots/.history/seq.txt  # 跨进程序列持久化
-```
-序列持久化：`.history/seq.txt` 记录 `YYYYMMDD 最后序号`，重启后继续递增；跨日自动重置。
+### 项目状态
+- ✅ **交互式截图**：完整实现，包含自研 GUI 区域选择器
+- ✅ **基础截图模式**：全屏和区域截图支持
+- ✅ **标注系统**：矩形、箭头、文本标注，支持撤销/重做
+- ✅ **多显示器基础支持**：可识别多个显示器
+- ✅ **PNG 导出**：高质量 PNG 格式输出
+- ✅ **剪贴板集成**：支持 macOS 系统剪贴板
+- ✅ **智能命名**：基于时间模板的自动文件命名
+- ✅ **跨平台架构**：macOS 完整支持，Windows 框架就绪
+- 🚧 **跨显示器选择**：规划中
+- 🚧 **Windows 实现**：开发中
+- 🚧 **高级标注**：高亮、马赛克、自由笔等
 
-## 架构速览
-1. Frame 捕获或构造
-2. Annotation (z 排序)
-3. SimpleRenderer CPU 合成
-4. 导出编码 (PNG/JPEG)
+## 技术特点
 
-## 路线图
-- [x] Core/Renderer 基础
-- [x] 基础标注：矩形 / 箭头 / 文本，支持撤销/重做
-- [x] 高级标注：高亮 / 马赛克 / 自由手绘 / 虚线描边
-- [x] PNG & JPEG 导出，质量控制
-- [x] 多显示器截图支持
-- [x] 跨进程序列持久化
-- [x] 历史系统含缩略图
-- [x] 基础设施：指标、panic 处理、缓存
-- [ ] 交互式区域选择 GUI
-- [ ] 字体栅格化（fontdue 集成）
-- [ ] 渲染快照基线测试
-- [ ] DirtyRect / SIMD 优化
-- [ ] OCR + 隐私自动区域建议
+### 截图能力
+- 交互式区域选择：自研 GUI 覆盖层，支持精确的区域选择
+- 全屏截图：支持单显示器和多显示器模式
+- 区域截图：指定坐标进行精确截图
+- 多显示器支持：自动检测所有连接的显示器
 
-## 贡献
-1. 变更架构时同步更新 `docs/tech_design/*.md`。
-2. 为渲染行为变更补充/修正测试。
-3. 保持公共 API 精简稳定；标注 feature flags。
+### 标注系统
+- 矩形标注：支持自定义颜色、线宽、圆角
+- 箭头标注：实线/虚线样式，可调节箭头大小
+- 文本标注：可定制字体、大小、颜色
+- 撤销/重做：完整的操作历史管理
+- 图层管理：z-index 排序，锁定/解锁
+
+### 跨平台架构
+- macOS：完整实现，基于 xcap 和 NSPasteboard
+- Windows：框架就绪，待具体实现
+- 统一接口：平台特定实现对上层透明
+
+### 高效渲染
+- CPU 渲染引擎，无 GPU 依赖
+- 高质量 PNG 输出和 JPEG 支持
+- 集成系统剪贴板
+- 智能文件命名和历史管理
+
+## 开发路线图
+
+### 当前版本 (v0.1)
+- ✅ 交互式截图核心功能
+- ✅ 基础标注系统
+- ✅ macOS 平台完整支持
+- ✅ 多显示器基础架构
+
+### 下一步 (v0.2)
+- [ ] Windows 平台完整实现
+- [ ] 增强多显示器体验
+  - [ ] 显示器边界可视化
+  - [ ] 跨显示器区域选择
+- [ ] 高级标注功能
+  - [ ] 高亮模式（Multiply/Screen）
+  - [ ] 马赛克遮罩
+  - [ ] 自由笔绘制
+
+### 未来计划 (v0.3+)
+- [ ] 标注编辑器 UI
+- [ ] 历史记录管理界面
+- [ ] 性能优化和 GPU 加速
+- [ ] 插件系统和扩展 API
+
+## 贡献指南
+1. 架构变更请同步更新 `docs/tech_design/` 中的相关文档
+2. 新功能需要添加相应的测试
+3. 保持 API 简洁稳定，记录功能标志
+4. 遵循模块边界，避免循环依赖
 
 ## 许可证
-MIT
+MIT (详见 LICENSE 文件)
+

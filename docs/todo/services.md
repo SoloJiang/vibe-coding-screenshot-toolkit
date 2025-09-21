@@ -4,6 +4,14 @@
 
  - [x] 原生区域截图 (mac screencapture -R 集成)
 
+## 多显示器服务增强 (优先级 M2)
+- [ ] MultiDisplayService 实现：显示器发现、元数据管理、捕获协调
+- [ ] CaptureService 多显示器扩展：批量捕获、错误隔离、并行处理
+- [ ] 跨显示器区域截图服务：虚拟桌面坐标处理、区域分解与合成
+- [ ] RegionSelectService 多显示器集成：跨显示器选择、坐标转换
+- [ ] ExportService 批量导出：多文件命名、批量历史记录
+- [ ] HistoryService 多显示器支持：显示器信息记录、筛选功能
+
 ## m1
  - [x] CaptureService 骨架
  - [x] AnnotationService CRUD + Undo
@@ -18,13 +26,7 @@
 - [x] OcrService stub
  - [x] OcrService 简易线程池队列 (占位)
  - [x] PrivacyService 邮箱/手机号正则扫描基础
-
-## m3
-- [ ] OcrService 线程池 (占位线程池已具雏形, 待真实 OCR 集成)
-- [x] PrivacyService 扫描 (扩展: URL/IPv4/手机号) + mask 占位
-- [ ] PrivacyService Mosaic (待图像处理阶段)
-- [ ] Upload 支持
- - [ ] RegionSelectService 集成（调用 ui_overlay 框选 UI，返回 Rect）
+ - [x] RegionSelectService 集成（调用 ui_overlay 框选 UI，返回 Rect）
 
 ## m4
 - [ ] HookService + 超时
