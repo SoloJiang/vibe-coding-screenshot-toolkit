@@ -62,6 +62,23 @@ pub trait RegionSelector {
             Err(e) => Err(e),
         }
     }
+
+    /// 新增：支持虚拟桌面背景的区域选择
+    /// virtual_bounds: 虚拟桌面的边界信息 (min_x, min_y, width, height)
+    /// display_offset: 当前交互显示器在虚拟桌面中的偏移 (x, y)
+    /// 返回的Region坐标是相对于虚拟桌面的全局坐标
+    fn select_with_virtual_background(
+        &self,
+        _rgb: &[u8],
+        _width: u32,
+        _height: u32,
+        _virtual_bounds: (i32, i32, u32, u32), // (min_x, min_y, width, height)
+        _display_offset: (i32, i32),           // (x, y)
+    ) -> MaybeRegion {
+        // 默认实现：对于虚拟桌面模式，直接使用虚拟桌面背景
+        // 坐标不需要转换，因为背景就是完整的虚拟桌面
+        self.select_with_background(_rgb, _width, _height)
+    }
 }
 
 /// 一个 mock：立即返回给定区域；用于非图形环境测试
@@ -87,8 +104,12 @@ impl RegionSelector for MockSelector {
     }
 }
 
+mod coordinate_utils;
+mod event_handler;
 pub mod platform;
+mod renderer;
 mod selector;
+mod window_manager;
 
 pub fn create_gui_region_selector() -> Box<dyn RegionSelector> {
     Box::new(selector::WinitRegionSelector::new())

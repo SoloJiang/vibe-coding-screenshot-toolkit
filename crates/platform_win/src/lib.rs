@@ -81,4 +81,9 @@ impl WinCapturer {
         // TODO: 实现 Windows 区域截图
         anyhow::bail!("Windows region capture not implemented yet")
     }
+
+    pub fn capture_all() -> Result<Screenshot> {
+        // TODO: 实现 Windows 多显示器截图
+        anyhow::bail!("Windows multi-monitor capture not implemented yet")
+    }
 }

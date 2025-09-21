@@ -11,7 +11,12 @@ use std::sync::Arc;
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
-#[command(author, version, about = "Cross-platform Screenshot Capture Tool", long_about = None)]
+#[command(
+    author,
+    version,
+    about = "跨平台交互式截图工具 - 专注多显示器环境",
+    long_about = "Screenshot Toolkit v0.1 MVP\n\n专注于交互式截图的跨平台工具，支持多显示器环境和跨显示器区域选择。\n\n特性：\n  • 交互式区域选择（鼠标拖拽）\n  • 多显示器自动检测和跨屏选择\n  • PNG 导出和剪贴板集成\n  • 智能文件命名（时间模板）\n  • 友好的权限和错误提示\n\n使用提示：\n  macOS 首次使用需要在\"系统偏好设置\"→\"安全性与隐私\"→\"隐私\"→\"屏幕录制\"中授权。"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -19,13 +24,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// 显示版本信息
     Version,
-    /// 交互式框选截图（支持多显示器和跨显示器）
+    /// 交互式框选截图 - 支持多显示器环境和跨显示器区域选择
+    ///
+    /// 启动交互式选择界面，支持鼠标拖拽选择任意矩形区域。
+    /// 操作说明：
+    ///   - 鼠标左键拖拽选择区域
+    ///   - Enter/Space 确认截图
+    ///   - Esc 取消操作
+    ///   - 支持跨多个显示器的区域选择
     CaptureInteractive(CaptureInteractiveArgs),
-    /// 全屏截图
-    Capture(CaptureArgs),
-    /// 区域截图
-    CaptureRegion(CaptureRegionArgs),
 }
 
 #[derive(Args)]
@@ -35,71 +44,20 @@ struct CaptureInteractiveArgs {
         long = "out-dir",
         default_value = ".",
         visible_alias = "out",
-        short_alias = 'o'
+        short_alias = 'o',
+        help = "输出目录路径"
     )]
     out_dir: PathBuf,
     #[arg(
         short = 't',
         long,
-        default_value = "Screenshot-{date:yyyyMMdd-HHmmss}-{seq}"
+        default_value = "Screenshot-{date:yyyyMMdd-HHmmss}-{seq}",
+        help = "文件名模板。支持变量：{date:format} 时间格式, {seq} 当日序列号"
     )]
     template: String,
-}
-
-#[derive(Args)]
-struct CaptureArgs {
-    #[arg(
-        short = 'd',
-        long = "out-dir",
-        default_value = ".",
-        visible_alias = "out",
-        short_alias = 'o'
-    )]
-    out_dir: PathBuf,
-    #[arg(
-        short = 't',
-        long,
-        default_value = "Screenshot-{date:yyyyMMdd-HHmmss}-{seq}"
-    )]
-    template: String,
-    /// 捕获所有显示器
-    #[arg(long)]
-    all: bool,
-}
-
-#[derive(Args)]
-struct CaptureRegionArgs {
-    #[arg(
-        short = 'd',
-        long = "out-dir",
-        default_value = ".",
-        visible_alias = "out",
-        short_alias = 'o'
-    )]
-    out_dir: PathBuf,
-    #[arg(
-        short = 't',
-        long,
-        default_value = "Screenshot-{date:yyyyMMdd-HHmmss}-{seq}"
-    )]
-    template: String,
-    /// 区域：x,y,width,height
-    #[arg(long, value_parser = parse_rect)]
-    rect: (u32, u32, u32, u32),
-}
-
-fn parse_rect(s: &str) -> Result<(u32, u32, u32, u32), String> {
-    let parts: Vec<&str> = s.split(',').collect();
-    if parts.len() != 4 {
-        return Err("格式应为 x,y,width,height".to_string());
-    }
-
-    let x = parts[0].parse::<u32>().map_err(|_| "x 必须是数字")?;
-    let y = parts[1].parse::<u32>().map_err(|_| "y 必须是数字")?;
-    let w = parts[2].parse::<u32>().map_err(|_| "width 必须是数字")?;
-    let h = parts[3].parse::<u32>().map_err(|_| "height 必须是数字")?;
-
-    Ok((x, y, w, h))
+    /// 截图后同时复制到系统剪贴板
+    #[arg(long, help = "将截图同时复制到系统剪贴板")]
+    clipboard: bool,
 }
 
 fn main() {
@@ -122,12 +80,6 @@ fn main() {
         Some(Commands::CaptureInteractive(args)) => {
             handle_interactive_capture(args);
         }
-        Some(Commands::Capture(args)) => {
-            handle_full_capture(args);
-        }
-        Some(Commands::CaptureRegion(args)) => {
-            handle_region_capture(args);
-        }
     }
 }
 
@@ -139,10 +91,34 @@ fn handle_interactive_capture(args: CaptureInteractiveArgs) {
 
         match MacCapturer::capture_region_interactive_custom(selector.as_ref()) {
             Ok(shot) => {
-                export_screenshot(shot, args.template, args.out_dir, "交互式截图");
+                export_screenshot(
+                    shot,
+                    args.template,
+                    args.out_dir,
+                    "交互式截图",
+                    args.clipboard,
+                );
             }
             Err(e) => {
-                eprintln!("❌ 交互框选失败/取消: {e}");
+                // 根据错误类型提供更友好的提示
+                match e.to_string().as_str() {
+                    s if s.contains("permission") => {
+                        eprintln!("❌ 权限不足：请在\"系统偏好设置\" → \"安全性与隐私\" → \"隐私\" → \"屏幕录制\"中，勾选本应用的权限。");
+                        eprintln!("💡 提示：权限设置后可能需要重启应用程序。");
+                    }
+                    s if s.contains("Cancelled") => {
+                        eprintln!("⚠️  操作已取消");
+                        std::process::exit(0); // 用户主动取消，正常退出
+                    }
+                    s if s.contains("display") => {
+                        eprintln!("❌ 显示器检测失败：{e}");
+                        eprintln!("💡 提示：请确认显示器连接正常，或尝试重新启动应用。");
+                    }
+                    _ => {
+                        eprintln!("❌ 交互框选失败: {e}");
+                        eprintln!("💡 提示：如果问题持续存在，请检查系统权限设置。");
+                    }
+                }
                 std::process::exit(2);
             }
         }
@@ -154,10 +130,34 @@ fn handle_interactive_capture(args: CaptureInteractiveArgs) {
 
         match WinCapturer::capture_region_interactive_custom(selector.as_ref()) {
             Ok(shot) => {
-                export_screenshot(shot, args.template, args.out_dir, "交互式截图");
+                export_screenshot(
+                    shot,
+                    args.template,
+                    args.out_dir,
+                    "交互式截图",
+                    args.clipboard,
+                );
             }
             Err(e) => {
-                eprintln!("❌ 交互框选失败/取消: {e}");
+                // 根据错误类型提供更友好的提示
+                match e.to_string().as_str() {
+                    s if s.contains("permission") => {
+                        eprintln!("❌ 权限不足：请确认应用具有屏幕捕获权限。");
+                        eprintln!("💡 提示：权限设置后可能需要重启应用程序。");
+                    }
+                    s if s.contains("Cancelled") => {
+                        eprintln!("⚠️  操作已取消");
+                        std::process::exit(0); // 用户主动取消，正常退出
+                    }
+                    s if s.contains("display") => {
+                        eprintln!("❌ 显示器检测失败：{e}");
+                        eprintln!("💡 提示：请确认显示器连接正常，或尝试重新启动应用。");
+                    }
+                    _ => {
+                        eprintln!("❌ 交互框选失败: {e}");
+                        eprintln!("💡 提示：如果问题持续存在，请检查系统权限设置。");
+                    }
+                }
                 std::process::exit(2);
             }
         }
@@ -169,99 +169,12 @@ fn handle_interactive_capture(args: CaptureInteractiveArgs) {
     }
 }
 
-fn handle_full_capture(args: CaptureArgs) {
-    #[cfg(target_os = "macos")]
-    {
-        let result = if args.all {
-            MacCapturer::capture_all()
-        } else {
-            MacCapturer::capture_full()
-        };
-
-        match result {
-            Ok(shot) => {
-                let desc = if args.all {
-                    "全屏截图(所有显示器)"
-                } else {
-                    "全屏截图"
-                };
-                export_screenshot(shot, args.template, args.out_dir, desc);
-            }
-            Err(e) => {
-                eprintln!("❌ 全屏截图失败: {e}");
-                std::process::exit(2);
-            }
-        }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let result = if args.all {
-            WinCapturer::capture_all()
-        } else {
-            WinCapturer::capture_full()
-        };
-
-        match result {
-            Ok(shot) => {
-                let desc = if args.all {
-                    "全屏截图(所有显示器)"
-                } else {
-                    "全屏截图"
-                };
-                export_screenshot(shot, args.template, args.out_dir, desc);
-            }
-            Err(e) => {
-                eprintln!("❌ 全屏截图失败: {e}");
-                std::process::exit(2);
-            }
-        }
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        eprintln!("❌ 当前平台暂不支持全屏截图");
-        std::process::exit(3);
-    }
-}
-
-fn handle_region_capture(args: CaptureRegionArgs) {
-    let (x, y, w, h) = args.rect;
-
-    #[cfg(target_os = "macos")]
-    {
-        match MacCapturer::capture_region(x, y, w, h) {
-            Ok(shot) => {
-                export_screenshot(shot, args.template, args.out_dir, "区域截图");
-            }
-            Err(e) => {
-                eprintln!("❌ 区域截图失败: {e}");
-                std::process::exit(2);
-            }
-        }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        match WinCapturer::capture_region(x, y, w, h) {
-            Ok(shot) => {
-                export_screenshot(shot, args.template, args.out_dir, "区域截图");
-            }
-            Err(e) => {
-                eprintln!("❌ 区域截图失败: {e}");
-                std::process::exit(2);
-            }
-        }
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        eprintln!("❌ 当前平台暂不支持区域截图");
-        std::process::exit(3);
-    }
-}
-
 fn export_screenshot(
     shot: screenshot_core::Screenshot,
     template: String,
     out_dir: PathBuf,
     desc: &str,
+    clipboard: bool,
 ) {
     let filename = gen_file_name(&template, 1);
     let out = out_dir.join(format!("{}.png", filename));
@@ -285,9 +198,41 @@ fn export_screenshot(
     };
 
     if let Err(e) = export.export_png_to_file(&shot, &[], &out) {
-        eprintln!("❌ {}导出失败: {e}", desc);
+        match e.to_string().as_str() {
+            s if s.contains("permission") || s.contains("Permission") => {
+                eprintln!("❌ {}导出失败: 文件写入权限不足", desc);
+                eprintln!(
+                    "💡 提示：请检查输出目录的写入权限：{}",
+                    out.parent().unwrap_or(&out).display()
+                );
+            }
+            s if s.contains("No such file") || s.contains("not found") => {
+                eprintln!("❌ {}导出失败: 输出目录不存在", desc);
+                eprintln!(
+                    "💡 提示：请确认目录路径正确：{}",
+                    out.parent().unwrap_or(&out).display()
+                );
+            }
+            s if s.contains("disk") || s.contains("space") => {
+                eprintln!("❌ {}导出失败: 磁盘空间不足", desc);
+                eprintln!("💡 提示：请检查可用磁盘空间。");
+            }
+            _ => {
+                eprintln!("❌ {}导出失败: {e}", desc);
+                eprintln!("💡 提示：请检查输出路径和权限设置。");
+            }
+        }
         std::process::exit(1);
     } else {
         println!("✅ {}已保存: {}", desc, out.display());
+    }
+
+    // 如果指定了clipboard选项，同时复制到剪贴板
+    if clipboard {
+        if let Err(e) = export.export_png_to_clipboard(&shot, &[]) {
+            eprintln!("⚠️  剪贴板复制失败: {e}");
+        } else {
+            println!("📋 已复制到剪贴板");
+        }
     }
 }

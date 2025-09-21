@@ -1,9 +1,5 @@
 # services 模块 todo
 
-## MVP (进度)
-
- - [x] 原生区域截图 (mac screencapture -R 集成)
-
 ## 多显示器服务增强 (优先级 M2)
 - [ ] MultiDisplayService 实现：显示器发现、元数据管理、捕获协调
 - [ ] CaptureService 多显示器扩展：批量捕获、错误隔离、并行处理

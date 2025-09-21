@@ -1,0 +1,28 @@
+feat(multi-monitor): 实现完整的虚拟桌面与跨显示器截图架构
+
+本次提交实现了对多显示器环境的完整支持，是项目 MVP 的核心里程碑。引入了虚拟桌面坐标系统，允许用户在多个显示器之间无缝地进行交互式截图。
+
+主要重构和功能实现：
+
+1.  **虚拟桌面架构 (platform_mac)**:
+    *   新增 `VirtualDesktop` 和 `DisplayInfo`，用于检测和管理多显示器布局。
+    *   重写 `capture_all()` 以合成完整的虚拟桌面图像，支持不规则布局和负坐标。
+    *   优化 `capture_region_interactive_custom`，使用虚拟桌面作为背景，实现真正的跨显示器选择。
+
+2.  **UI 覆盖层重构 (ui_overlay)**:
+    *   引入 `WindowManager`，为每个显示器创建一个独立的覆盖窗口，实现无缝体验。
+    *   新增 `EventHandler` 和 `Renderer` 模块，将逻辑拆分，提升可维护性。
+    *   扩展 `RegionSelector` trait 以支持虚拟桌面坐标，并修复了非主屏下的坐标转换问题。
+
+3.  **CLI 简化与增强 (api_cli)**:
+    *   聚焦核心功能，移除了 `capture` 和 `capture-region` 命令。
+    *   新增 `--clipboard` 选项，支持将截图直接复制到剪贴板。
+    *   极大地改善了错误处理，为权限、取消等场景提供了更友好的用户提示。
+
+4.  **文档同步**:
+    *   全面更新 `README.md`，反映新的 MVP 功能和使用方法。
+    *   同步更新所有技术设计和 TODO 文档，标记多显示器功能为已完成。
+
+BREAKING CHANGE: CLI 命令已简化。
+移除了 `capture` 和 `capture-region` 命令，现在 `capture-interactive` 是唯一的截图命令。
+这次变更统一了用户体验，将重心完全放在了更强大的交互式截图上。
