@@ -27,51 +27,77 @@ pub type SelectionRect = (i32, i32, i32, i32);
 pub struct SelectionRenderer;
 
 impl SelectionRenderer {
-    /// 渲染虚拟桌面背景到窗口帧缓冲区
+    /// 优化的虚拟桌面背景渲染 - 使用行拷贝代替逐像素操作
     pub fn render_virtual_background(ctx: &mut RenderContext, bg: &Background) {
         if let Some((virt_min_x, virt_min_y, _, _)) = ctx.virtual_bounds {
             // 计算这个窗口在虚拟桌面中的相对位置
             let window_x_in_virt = ctx.virtual_x - virt_min_x;
             let window_y_in_virt = ctx.virtual_y - virt_min_y;
 
-            // 从虚拟桌面背景中提取对应区域
+            // 优化：使用行拷贝代替逐像素拷贝
             for y in 0..ctx.size_px.height as usize {
-                for x in 0..ctx.size_px.width as usize {
-                    let bg_x = window_x_in_virt as usize + x;
-                    let bg_y = window_y_in_virt as usize + y;
-                    if bg_x >= bg.width as usize || bg_y >= bg.height as usize {
-                        continue;
-                    }
-                    let bg_idx = (bg_y * bg.width as usize + bg_x) * 4;
-                    let frame_idx = (y * ctx.size_px.width as usize + x) * 4;
+                let bg_y = window_y_in_virt as usize + y;
+                if bg_y >= bg.height as usize {
+                    continue;
+                }
 
-                    if bg_idx + 3 < bg.data.len() && frame_idx + 3 < ctx.frame.len() {
-                        ctx.frame[frame_idx..frame_idx + 4]
-                            .copy_from_slice(&bg.data[bg_idx..bg_idx + 4]);
+                let bg_row_start = bg_y * bg.width as usize * 4;
+                let frame_row_start = y * ctx.size_px.width as usize * 4;
+
+                // 计算可拷贝的像素数量
+                let window_x_offset = window_x_in_virt.max(0) as usize;
+                let available_bg_pixels = bg.width as usize - window_x_offset;
+                let needed_pixels = ctx.size_px.width as usize;
+                let copy_pixels = available_bg_pixels.min(needed_pixels);
+
+                if copy_pixels > 0 {
+                    let bg_start_idx = bg_row_start + (window_x_offset * 4);
+                    let frame_start_idx = frame_row_start;
+                    let copy_bytes = copy_pixels * 4;
+
+                    // 边界检查后进行行拷贝
+                    if bg_start_idx + copy_bytes <= bg.data.len()
+                        && frame_start_idx + copy_bytes <= ctx.frame.len()
+                    {
+                        ctx.frame[frame_start_idx..frame_start_idx + copy_bytes]
+                            .copy_from_slice(&bg.data[bg_start_idx..bg_start_idx + copy_bytes]);
                     }
                 }
             }
         } else {
-            // 简单缩放虚拟桌面到窗口
-            for y in 0..ctx.size_px.height as usize {
-                for x in 0..ctx.size_px.width as usize {
-                    let bg_x = (x * bg.width as usize / ctx.size_px.width as usize)
-                        .min(bg.width as usize - 1);
-                    let bg_y = (y * bg.height as usize / ctx.size_px.height as usize)
-                        .min(bg.height as usize - 1);
-                    let bg_idx = (bg_y * bg.width as usize + bg_x) * 4;
-                    let frame_idx = (y * ctx.size_px.width as usize + x) * 4;
+            // 非虚拟模式：使用优化的缩放拷贝
+            Self::render_scaled_background(ctx, bg);
+        }
+    }
 
-                    if bg_idx + 3 < bg.data.len() && frame_idx + 3 < ctx.frame.len() {
-                        ctx.frame[frame_idx..frame_idx + 4]
-                            .copy_from_slice(&bg.data[bg_idx..bg_idx + 4]);
-                    }
+    /// 优化的缩放背景渲染
+    fn render_scaled_background(ctx: &mut RenderContext, bg: &Background) {
+        let frame_width = ctx.size_px.width as usize;
+        let frame_height = ctx.size_px.height as usize;
+
+        // 预计算缩放比例
+        let x_scale = bg.width as f32 / frame_width as f32;
+        let y_scale = bg.height as f32 / frame_height as f32;
+
+        for y in 0..frame_height {
+            let bg_y = ((y as f32 * y_scale) as usize).min(bg.height as usize - 1);
+            let bg_row_start = bg_y * bg.width as usize * 4;
+            let frame_row_start = y * frame_width * 4;
+
+            for x in 0..frame_width {
+                let bg_x = ((x as f32 * x_scale) as usize).min(bg.width as usize - 1);
+                let bg_idx = bg_row_start + bg_x * 4;
+                let frame_idx = frame_row_start + x * 4;
+
+                if bg_idx + 3 < bg.data.len() && frame_idx + 3 < ctx.frame.len() {
+                    ctx.frame[frame_idx..frame_idx + 4]
+                        .copy_from_slice(&bg.data[bg_idx..bg_idx + 4]);
                 }
             }
         }
     }
 
-    /// 在选择区域内渲染原始背景
+    /// 在选择区域内渲染原始背景 - 优化版本
     pub fn render_selection_background(
         ctx: &mut RenderContext,
         original_bg: &Background,
@@ -96,38 +122,58 @@ impl SelectionRenderer {
         let width = ctx.size_px.width as usize;
         let height = ctx.size_px.height as usize;
 
-        // 在选择区域内恢复原始背景
+        // 在选择区域内恢复原始背景 - 优化版本
         if let Some((virt_min_x, virt_min_y, _, _)) = ctx.virtual_bounds {
-            // 虚拟桌面模式：计算窗口在虚拟桌面中的相对位置
+            // 虚拟桌面模式：使用行拷贝优化
             let window_x_in_virt = ctx.virtual_x - virt_min_x;
             let window_y_in_virt = ctx.virtual_y - virt_min_y;
 
             for y in local_y0..local_y1.min(height) {
-                for x in local_x0..local_x1.min(width) {
-                    let bg_x = window_x_in_virt as usize + x;
-                    let bg_y = window_y_in_virt as usize + y;
-                    if bg_x >= original_bg.width as usize || bg_y >= original_bg.height as usize {
-                        continue;
-                    }
-                    let bg_idx = (bg_y * original_bg.width as usize + bg_x) * 4;
-                    let frame_idx = (y * width + x) * 4;
+                let bg_y = window_y_in_virt as usize + y;
+                if bg_y >= original_bg.height as usize {
+                    continue;
+                }
 
-                    if bg_idx + 3 < original_bg.data.len() && frame_idx + 3 < ctx.frame.len() {
-                        ctx.frame[frame_idx..frame_idx + 4]
-                            .copy_from_slice(&original_bg.data[bg_idx..bg_idx + 4]);
+                let bg_row_start = bg_y * original_bg.width as usize * 4;
+                let frame_row_start = y * width * 4;
+
+                // 计算行内的拷贝范围
+                let start_x = local_x0.max(0);
+                let end_x = local_x1.min(width);
+                let copy_pixels = end_x - start_x;
+
+                if copy_pixels > 0 {
+                    let bg_x_offset = window_x_in_virt as usize + start_x;
+                    if bg_x_offset + copy_pixels <= original_bg.width as usize {
+                        let bg_start_idx = bg_row_start + bg_x_offset * 4;
+                        let frame_start_idx = frame_row_start + start_x * 4;
+                        let copy_bytes = copy_pixels * 4;
+
+                        if bg_start_idx + copy_bytes <= original_bg.data.len()
+                            && frame_start_idx + copy_bytes <= ctx.frame.len()
+                        {
+                            ctx.frame[frame_start_idx..frame_start_idx + copy_bytes]
+                                .copy_from_slice(
+                                    &original_bg.data[bg_start_idx..bg_start_idx + copy_bytes],
+                                );
+                        }
                     }
                 }
             }
         } else {
-            // 非虚拟模式：简单缩放
+            // 非虚拟模式：优化的缩放拷贝
+            let x_scale = original_bg.width as f32 / width as f32;
+            let y_scale = original_bg.height as f32 / height as f32;
+
             for y in local_y0..local_y1.min(height) {
+                let bg_y = ((y as f32 * y_scale) as usize).min(original_bg.height as usize - 1);
+                let bg_row_start = bg_y * original_bg.width as usize * 4;
+                let frame_row_start = y * width * 4;
+
                 for x in local_x0..local_x1.min(width) {
-                    let bg_x = (x * original_bg.width as usize / width)
-                        .min(original_bg.width as usize - 1);
-                    let bg_y = (y * original_bg.height as usize / height)
-                        .min(original_bg.height as usize - 1);
-                    let bg_idx = (bg_y * original_bg.width as usize + bg_x) * 4;
-                    let frame_idx = (y * width + x) * 4;
+                    let bg_x = ((x as f32 * x_scale) as usize).min(original_bg.width as usize - 1);
+                    let bg_idx = bg_row_start + bg_x * 4;
+                    let frame_idx = frame_row_start + x * 4;
 
                     if bg_idx + 3 < original_bg.data.len() && frame_idx + 3 < ctx.frame.len() {
                         ctx.frame[frame_idx..frame_idx + 4]

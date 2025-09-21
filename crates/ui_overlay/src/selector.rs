@@ -9,7 +9,10 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowLevel};
 
-pub struct WinitRegionSelector;
+pub struct WinitRegionSelector {
+    /// 复用的RGBA缓冲区，避免重复分配
+    rgba_buffer: parking_lot::Mutex<Vec<u8>>,
+}
 
 pub struct SelectionApp {
     attrs: WindowAttributes,
@@ -24,7 +27,34 @@ pub struct SelectionApp {
 
 impl WinitRegionSelector {
     pub fn new() -> Self {
-        Self
+        Self {
+            rgba_buffer: parking_lot::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// 高效的RGB到RGBA转换，复用缓冲区
+    fn convert_rgb_to_rgba(&self, rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
+        let required_size = (width as usize) * (height as usize) * 4;
+        let mut buffer = self.rgba_buffer.lock();
+
+        // 只有在需要更大空间时才重新分配
+        if buffer.len() < required_size {
+            buffer.resize(required_size, 0);
+        }
+
+        // 就地转换，复用现有内存
+        for (i, chunk) in rgb.chunks_exact(3).enumerate() {
+            let base = i * 4;
+            if base + 3 < buffer.len() {
+                buffer[base] = chunk[0];
+                buffer[base + 1] = chunk[1];
+                buffer[base + 2] = chunk[2];
+                buffer[base + 3] = 255;
+            }
+        }
+
+        // 返回所需大小的切片副本
+        buffer[..required_size].to_vec()
     }
 
     fn run_selector(
@@ -34,21 +64,8 @@ impl WinitRegionSelector {
         bg_h: u32,
         virtual_bounds: Option<(i32, i32, u32, u32)>, // (min_x, min_y, width, height)
     ) -> crate::MaybeRegion {
-        // 预处理背景（RGB -> RGBA），若提供
-        let bg_rgba: Option<Vec<u8>> = bg_rgb.map(|rgb| {
-            let mut out = vec![0u8; (bg_w as usize) * (bg_h as usize) * 4];
-            for y in 0..bg_h as usize {
-                for x in 0..bg_w as usize {
-                    let si = (y * (bg_w as usize) + x) * 3;
-                    let di = (y * (bg_w as usize) + x) * 4;
-                    out[di] = rgb[si];
-                    out[di + 1] = rgb[si + 1];
-                    out[di + 2] = rgb[si + 2];
-                    out[di + 3] = 255;
-                }
-            }
-            out
-        });
+        // 使用优化的RGB到RGBA转换
+        let bg_rgba: Option<Vec<u8>> = bg_rgb.map(|rgb| self.convert_rgb_to_rgba(rgb, bg_w, bg_h));
 
         let event_loop =
             EventLoop::new().map_err(|e| OverlayError::Internal(format!("event loop: {e}")))?;
@@ -136,7 +153,8 @@ impl SelectionApp {
         let virtual_bounds = self.state.virtual_bounds;
         let bg_w = self.bg_w;
         let bg_h = self.bg_h;
-        let bg_dim = self.bg_dim.clone();
+        // 优化：使用引用而非克隆大数据
+        let bg_dim_ref = self.bg_dim.as_ref();
 
         // 优化：提前计算选择区域
         let (x0c, y0c, x1c, y1c) = self.state.calculate_selection_rect();
@@ -173,7 +191,7 @@ impl SelectionApp {
         };
 
         // 渲染背景
-        if let Some(bg_data) = &bg_dim {
+        if let Some(bg_data) = bg_dim_ref {
             let bg = Background {
                 data: bg_data,
                 width: bg_w,

@@ -27,6 +27,10 @@ pub struct SelectionState {
     pub virtual_bounds: Option<(i32, i32, u32, u32)>,
     /// 上次重绘时间（用于限制重绘频率）
     pub last_redraw_time: std::time::Instant,
+    /// 重绘预算（防止过度重绘）
+    pub redraw_budget: u32,
+    /// 强制重绘标志
+    pub force_redraw: bool,
 }
 
 impl SelectionState {
@@ -43,6 +47,8 @@ impl SelectionState {
             redraw_pending: false,
             virtual_bounds,
             last_redraw_time: std::time::Instant::now(),
+            redraw_budget: 4, // 初始预算
+            force_redraw: false,
         }
     }
 
@@ -108,26 +114,51 @@ impl SelectionState {
         })
     }
 
-    /// 检查是否需要限制重绘频率
+    /// 智能重绘频率控制
     pub fn should_throttle_redraw(&self) -> bool {
+        if self.force_redraw || self.redraw_budget == 0 {
+            return false; // 强制重绘或无预算时不限制
+        }
+
         if self.redraw_pending {
             return true; // 避免重复请求重绘
         }
 
-        // 时间防抖：限制重绘频率到约60fps
         let now = std::time::Instant::now();
-        now.duration_since(self.last_redraw_time).as_millis() < 16
+        let elapsed = now.duration_since(self.last_redraw_time).as_millis();
+
+        // 动态阈值：拖拽时允许更高频率，静态时降低频率
+        let threshold = if self.dragging { 8 } else { 16 }; // 125fps vs 62.5fps
+        elapsed < threshold
     }
 
     /// 标记重绘请求已发送
     pub fn mark_redraw_requested(&mut self) {
         self.redraw_pending = true;
         self.last_redraw_time = std::time::Instant::now();
+
+        // 消耗重绘预算
+        if self.redraw_budget > 0 && !self.force_redraw {
+            self.redraw_budget -= 1;
+        }
+
+        self.force_redraw = false; // 重置强制重绘标志
     }
 
     /// 清除重绘标记
     pub fn clear_redraw_pending(&mut self) {
         self.redraw_pending = false;
+
+        // 定期恢复重绘预算
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last_redraw_time).as_millis() > 250 {
+            self.redraw_budget = self.redraw_budget.saturating_add(2).min(4);
+        }
+    }
+
+    /// 强制下次重绘（用于重要状态变化）
+    pub fn force_next_redraw(&mut self) {
+        self.force_redraw = true;
     }
 }
 
@@ -158,11 +189,21 @@ impl EventHandler {
 
         match logical_key {
             Key::Named(NamedKey::Shift) => {
+                let was_pressed = state.shift_down;
                 state.shift_down = key_state == ElementState::Pressed;
+                // 状态变化时强制重绘
+                if was_pressed != state.shift_down {
+                    state.force_next_redraw();
+                }
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::Alt) => {
+                let was_pressed = state.alt_down;
                 state.alt_down = key_state == ElementState::Pressed;
+                // 状态变化时强制重绘
+                if was_pressed != state.alt_down {
+                    state.force_next_redraw();
+                }
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::ArrowLeft) if key_state == ElementState::Pressed => {
@@ -193,7 +234,7 @@ impl EventHandler {
         }
     }
 
-    /// 处理鼠标移动事件
+    /// 智能鼠标移动事件处理 - 上下文感知优化
     ///
     /// # 参数
     /// * `state` - 选择状态
@@ -202,20 +243,38 @@ impl EventHandler {
     /// # 返回值
     /// 是否需要重绘
     pub fn handle_cursor_moved(state: &mut SelectionState, new_pos: (f64, f64)) -> bool {
-        // 防抖优化：只有移动距离超过阈值才更新和重绘
         let distance = ((new_pos.0 - state.last_cursor_pos.0).powi(2)
             + (new_pos.1 - state.last_cursor_pos.1).powi(2))
         .sqrt();
 
-        if distance > 1.5 || !state.dragging {
+        // 动态阈值：根据当前选择区域大小调整移动敏感度
+        let current_area = {
+            let (x0, y0, x1, y1) = state.calculate_selection_rect();
+            (x1 - x0).abs() * (y1 - y0).abs()
+        };
+
+        // 选择区域越大，移动阈值越大，减少不必要的重绘
+        let threshold = if current_area > 50000.0 {
+            4.0 // 大区域：4像素阈值
+        } else if current_area > 10000.0 {
+            2.5 // 中等区域：2.5像素阈值
+        } else if state.dragging {
+            1.5 // 拖拽中：1.5像素阈值
+        } else {
+            3.0 // 非拖拽：3像素阈值
+        };
+
+        if distance > threshold || !state.dragging {
             state.curr = new_pos;
             state.last_cursor_pos = new_pos;
 
-            // 只在拖动时才重绘，减少不必要的渲染
-            state.dragging
-        } else {
-            false
+            // 只有在拖拽或选择状态改变时才重绘
+            if state.dragging || state.alt_down {
+                return true;
+            }
         }
+
+        false
     }
 
     /// 处理鼠标按键事件
