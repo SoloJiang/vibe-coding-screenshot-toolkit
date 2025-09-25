@@ -27,14 +27,12 @@ pub type SelectionRect = (i32, i32, i32, i32);
 pub struct SelectionRenderer;
 
 impl SelectionRenderer {
-    /// 优化的虚拟桌面背景渲染 - 使用行拷贝代替逐像素操作
+    /// 渲染虚拟桌面的背景到当前窗口
     pub fn render_virtual_background(ctx: &mut RenderContext, bg: &Background) {
         if let Some((virt_min_x, virt_min_y, _, _)) = ctx.virtual_bounds {
-            // 计算这个窗口在虚拟桌面中的相对位置
             let window_x_in_virt = ctx.virtual_x - virt_min_x;
             let window_y_in_virt = ctx.virtual_y - virt_min_y;
 
-            // 优化：使用行拷贝代替逐像素拷贝
             for y in 0..ctx.size_px.height as usize {
                 let bg_y = window_y_in_virt as usize + y;
                 if bg_y >= bg.height as usize {
@@ -44,18 +42,16 @@ impl SelectionRenderer {
                 let bg_row_start = bg_y * bg.width as usize * 4;
                 let frame_row_start = y * ctx.size_px.width as usize * 4;
 
-                // 计算可拷贝的像素数量
                 let window_x_offset = window_x_in_virt.max(0) as usize;
                 let available_bg_pixels = bg.width as usize - window_x_offset;
                 let needed_pixels = ctx.size_px.width as usize;
                 let copy_pixels = available_bg_pixels.min(needed_pixels);
 
                 if copy_pixels > 0 {
-                    let bg_start_idx = bg_row_start + (window_x_offset * 4);
+                    let bg_start_idx = bg_row_start + window_x_offset * 4;
                     let frame_start_idx = frame_row_start;
                     let copy_bytes = copy_pixels * 4;
 
-                    // 边界检查后进行行拷贝
                     if bg_start_idx + copy_bytes <= bg.data.len()
                         && frame_start_idx + copy_bytes <= ctx.frame.len()
                     {
@@ -65,17 +61,14 @@ impl SelectionRenderer {
                 }
             }
         } else {
-            // 非虚拟模式：使用优化的缩放拷贝
             Self::render_scaled_background(ctx, bg);
         }
     }
 
-    /// 优化的缩放背景渲染
     fn render_scaled_background(ctx: &mut RenderContext, bg: &Background) {
         let frame_width = ctx.size_px.width as usize;
         let frame_height = ctx.size_px.height as usize;
 
-        // 预计算缩放比例
         let x_scale = bg.width as f32 / frame_width as f32;
         let y_scale = bg.height as f32 / frame_height as f32;
 

@@ -14,6 +14,8 @@ pub struct WinitRegionSelector {
     rgba_buffer: parking_lot::Mutex<Vec<u8>>,
 }
 
+const OVERLAY_BG_COLOR: [u8; 4] = [0, 0, 0, 128];
+
 pub struct SelectionApp {
     attrs: WindowAttributes,
     window_manager: WindowManager,
@@ -21,7 +23,8 @@ pub struct SelectionApp {
     bg: Option<Vec<u8>>,
     bg_w: u32,
     bg_h: u32,
-    bg_dim: Option<Vec<u8>>,
+    bg_tinted: Option<Vec<u8>>,
+    overlay_color: [u8; 4],
     state: SelectionState,
 }
 
@@ -74,7 +77,7 @@ impl WinitRegionSelector {
             .with_window_level(WindowLevel::AlwaysOnTop)
             .with_decorations(false)
             .with_resizable(false)
-            .with_transparent(false)
+            .with_transparent(true)
             // 先隐藏窗口，预热渲染后再显示，避免首次交互卡顿
             .with_visible(false);
         let mut app = SelectionApp {
@@ -84,7 +87,8 @@ impl WinitRegionSelector {
             bg: bg_rgba,
             bg_w,
             bg_h,
-            bg_dim: None,
+            bg_tinted: None,
+            overlay_color: OVERLAY_BG_COLOR,
             state: SelectionState::new(virtual_bounds),
         };
 
@@ -157,9 +161,11 @@ impl SelectionApp {
         let virtual_bounds = self.state.virtual_bounds;
         let bg_w = self.bg_w;
         let bg_h = self.bg_h;
-        // 优化：使用引用而非克隆大数据
-        let bg_dim_ref = self.bg_dim.as_ref();
-
+        let bg_tinted_ref = self.bg_tinted.as_ref();
+        if bg_tinted_ref.is_none() {
+            self.ensure_tinted_background();
+        }
+        let bg_tinted_ref = self.bg_tinted.as_ref();
         // 优化：提前计算选择区域
         let (x0c, y0c, x1c, y1c) = self.state.calculate_selection_rect();
 
@@ -195,16 +201,21 @@ impl SelectionApp {
         };
 
         // 渲染背景
-        if let Some(bg_data) = bg_dim_ref {
-            let bg = Background {
-                data: bg_data,
-                width: bg_w,
-                height: bg_h,
-            };
-            SelectionRenderer::render_virtual_background(&mut ctx, &bg);
+        if let Some(bg_data) = bg_tinted_ref {
+            if bg_w > 0 && bg_h > 0 {
+                let bg = Background {
+                    data: bg_data,
+                    width: bg_w,
+                    height: bg_h,
+                };
+                SelectionRenderer::render_virtual_background(&mut ctx, &bg);
+            } else {
+                let [r, g, b, a] = self.overlay_color;
+                SelectionRenderer::render_solid_background(ctx.frame, r, g, b, a);
+            }
         } else {
-            // 黑色背景
-            SelectionRenderer::render_solid_background(ctx.frame, 0, 0, 0, 255);
+            let [r, g, b, a] = self.overlay_color;
+            SelectionRenderer::render_solid_background(ctx.frame, r, g, b, a);
         }
 
         // 在选择区域内恢复原始背景（如果有选择且有原始背景）
@@ -224,6 +235,37 @@ impl SelectionApp {
             SelectionRenderer::render_selection_border(&mut ctx, selection);
         }
         let _ = pixels.render();
+    }
+
+    fn ensure_tinted_background(&mut self) {
+        if self.bg_tinted.is_some() {
+            return;
+        }
+
+        if let Some(bg) = &self.bg {
+            if !bg.is_empty() && self.bg_w > 0 && self.bg_h > 0 {
+                self.bg_tinted = Some(Self::tint_background(bg, self.overlay_color));
+            }
+        }
+    }
+
+    fn tint_background(bg: &[u8], overlay_color: [u8; 4]) -> Vec<u8> {
+        let overlay_alpha = overlay_color[3] as u16;
+        let inv_alpha = 255u16.saturating_sub(overlay_alpha);
+        let tint_r = overlay_color[0] as u16;
+        let tint_g = overlay_color[1] as u16;
+        let tint_b = overlay_color[2] as u16;
+
+        let mut tinted = vec![0u8; bg.len()];
+
+        for (src, dst) in bg.chunks_exact(4).zip(tinted.chunks_exact_mut(4)) {
+            dst[0] = (((src[0] as u16) * inv_alpha + tint_r * overlay_alpha) / 255) as u8;
+            dst[1] = (((src[1] as u16) * inv_alpha + tint_g * overlay_alpha) / 255) as u8;
+            dst[2] = (((src[2] as u16) * inv_alpha + tint_b * overlay_alpha) / 255) as u8;
+            dst[3] = 255;
+        }
+
+        tinted
     }
 
     fn request_redraw_all(&mut self) {
@@ -372,31 +414,19 @@ impl ApplicationHandler for SelectionApp {
         // 创建演示守护程序（只需要一次）
         if !self.window_manager.windows.is_empty() {
             self.pres_guard = platform::start_presentation();
-
-            // 预计算变暗背景
-            if self.bg_dim.is_none() {
-                if let Some(bg) = &self.bg {
-                    let mut dim = vec![0u8; bg.len()];
-                    let a = 90u8 as u16;
-                    for (i, chunk) in bg.chunks_exact(4).enumerate() {
-                        let r = chunk[0] as u16;
-                        let g = chunk[1] as u16;
-                        let b = chunk[2] as u16;
-                        let base = i * 4;
-                        dim[base] = ((r * (255 - a)) / 255) as u8;
-                        dim[base + 1] = ((g * (255 - a)) / 255) as u8;
-                        dim[base + 2] = ((b * (255 - a)) / 255) as u8;
-                        dim[base + 3] = 255;
-                    }
-                    self.bg_dim = Some(dim);
+            self.ensure_tinted_background();
+            #[cfg(target_os = "macos")]
+            {
+                let color = self.overlay_color;
+                for window_info in &self.window_manager.windows {
+                    platform::apply_overlay_window_appearance(window_info.window.as_ref(), color);
                 }
             }
 
-            // 为每个窗口预热渲染，然后再显示
             for i in 0..self.window_manager.windows.len() {
-                // 预热渲染 - 先渲染一帧再显示窗口，避免闪动
                 self.render_window_by_index(i);
                 self.window_manager.windows[i].window.set_visible(true);
+                self.window_manager.windows[i].window.request_redraw();
             }
         }
     }
