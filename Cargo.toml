@@ -33,3 +33,4 @@ smallvec = "1"
 chrono = { version = "0.4", features=["clock","serde"] }
 regex = "1"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+skia-safe = { version = "0.88", features = ["gl", "metal", "textlayout", "svg"] }

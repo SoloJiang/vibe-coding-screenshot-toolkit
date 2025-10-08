@@ -11,12 +11,24 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 parking_lot = { workspace = true }
 winit = "0.30"
-pixels = "0.15.0"
+image = { workspace = true }
+skia-safe = { workspace = true }
+softbuffer = "0.4.6"
+glutin = "0.32"
+glutin-winit = "0.5"
+raw-window-handle = "0.6"
 
 # macOS 依赖：用于窗口层级/行为控制（selector.rs 的 macOS 分支）
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.2"
 objc2-foundation = "0.3.1"
+objc2-core-foundation = "0.3.1"
 objc2-app-kit = "0.3.1"
+objc2-metal = "0.3.1"
+objc2-quartz-core = "0.3.1"
+core-graphics-types = "0.1"
 core-graphics = "0.24"
+# Metal GPU 渲染（使用 metal-rs，更符合 Rust 习惯）
+metal = "0.29"
+cocoa = "0.25"
 

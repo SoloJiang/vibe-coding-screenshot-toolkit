@@ -104,11 +104,17 @@ impl RegionSelector for MockSelector {
     }
 }
 
+pub mod backend;
 mod coordinate_utils;
 mod event_handler;
+mod frame_timer;
+mod image_cache;
 pub mod platform;
-mod renderer;
+mod selection_app;
+mod selection_render;
+mod selection_state;
 mod selector;
+mod window_info;
 mod window_manager;
 
 pub fn create_gui_region_selector() -> Box<dyn RegionSelector> {

@@ -1,34 +1,39 @@
-# core 模块 todo
+# core 模块 TODO
 
 ## 当前状态
 - ✅ 数据结构 Screenshot / Frame / FrameSet
+- ✅ Annotation 完整模型（7 种标注类型）
+- ✅ UndoStack 撤销/重做机制
+- ✅ HistoryItem 历史记录结构
 - ✅ 命名模板解析 + 单测
 - ✅ Error / ErrorKind + thiserror 实现
 
-## 交互式截图专用优化 (优先级 M1)
-- [ ] 命名模板增强：支持更多时间格式变量
-- [ ] Screenshot 元数据：记录截图来源（交互式、显示器信息等）
-- [ ] 错误处理完善：针对交互式截图的特定错误类型
-- [ ] 性能优化：大尺寸截图的内存管理
+## v0.2 - 标注编辑增强
+- [ ] Annotation 序列化性能优化（大量标注场景）
+- [ ] Region 增加更多辅助方法（contains_point, intersects 等）
+- [ ] 命名模板 LRU 缓存（避免重复正则匹配）
+- [ ] UndoStack 内存使用监控和自动裁剪
 
-## 多显示器数据模型 (优先级 M2)
-- [ ] DisplayInfo 结构体：显示器 ID、名称、边界、DPI、主显示器标识
-- [ ] VirtualDesktop 结构体：虚拟桌面边界和显示器列表
-- [ ] CrossDisplayRegion 结构体：跨显示器区域描述
-- [ ] FrameSet 多显示器扩展：显示器布局信息、按 ID 获取 Frame
+## v0.3 - 多显示器数据模型完善
+- [ ] DisplayInfo 结构体完善（亮度、方向等元数据）
+- [ ] VirtualDesktop 序列化支持（配置保存/恢复）
+- [ ] CrossDisplayRegion 结构体（跨显示器区域描述）
+- [ ] FrameSet 多显示器扩展（按 ID 索引 Frame）
 
-## 扩展功能 (优先级 M3+)
-- [ ] 序列化优化：针对大型截图的高效序列化
+## v0.4 - 性能优化
+- [ ] Annotation 空间索引（四叉树，用于快速碰撞检测）
+- [ ] Frame 延迟加载（大尺寸截图按需读取）
+- [ ] 命名模板预编译正则缓存
+- [ ] UndoOp 快照压缩（仅记录 diff 而非完整状态）
+
+## v1.0 - 扩展功能
+- [ ] Annotation 动画属性（淡入淡出、位移等）
+- [ ] 更多 AnnotationKind（椭圆、多边形、贝塞尔曲线）
 - [ ] 压缩支持：Frame 数据的可选压缩存储
-- [ ] 元数据标准化：符合常见图片元数据标准
-
-## 移除的功能（已完成清理）
-- ✅ 移除 Annotation 相关数据结构
-- ✅ 移除 UndoStack 相关逻辑
-- ✅ 移除 HistoryItem 相关结构
-- ✅ 简化 ErrorKind，仅保留交互式截图相关的错误类型
+- [ ] 元数据标准化：符合 EXIF/PNG tEXt 等标准
 
 ## 持续维护
-- [ ] 文档注释完善
-- [ ] 单元测试覆盖率提升
-- [ ] 性能基准测试
+- [ ] 文档注释完善（所有公开 API）
+- [ ] 单元测试覆盖率提升到 85%+
+- [ ] 性能基准测试（大数据量场景）
+- [ ] 模糊测试（fuzz testing）输入验证
