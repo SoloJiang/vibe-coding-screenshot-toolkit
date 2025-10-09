@@ -1,44 +1,57 @@
-# services 模块 todo
+# services 模块 TODO
 
-## MVP (进度)
+## 当前状态（v0.1 已完成）
+- ✅ ExportService（PNG/JPEG 导出）
+- ✅ AnnotationService（标注管理 + 撤销/重做）
+- ✅ HistoryService（历史记录管理）
+- ✅ 剪贴板集成（自动重试）
+- ✅ 缩略图生成
+- ✅ 指标采集（metrics）
 
- - [x] 原生区域截图 (mac screencapture -R 集成)
+## v0.2 - 标注编辑集成
+- [ ] EditingSession 服务（管理编辑会话状态）
+- [ ] 实时预览渲染（增量更新，不重绘全部）
+- [ ] 标注拖拽调整（位置、大小、旋转）
+- [ ] 标注选择和编辑（点选、框选）
+- [ ] 图层管理服务（z-index 批量调整）
+- [ ] 样式预设管理（常用颜色、粗细组合）
 
-## m1
- - [x] CaptureService 骨架
- - [x] AnnotationService CRUD + Undo
- - [x] ExportService 初版 (含 PNG)
+## v0.3 - 导出增强
+- [ ] 批量导出（多个标注版本）
+- [ ] 导出模板（固定尺寸、水印）
+- [ ] 云端上传服务（S3/OSS 集成占位）
+- [ ] 分享链接生成
+- [ ] 导出进度回调（大文件）
 
-## m2
-- [x] 平台 capturer 集成 (mac)
-- [x] 缩略图写入 (已有 History 持久化框架)
-- [x] HistoryService 持久化 (JSONL)
-- [x] Export JPEG (renderer 已具备)
-- [x] PrivacyService stub
-- [x] OcrService stub
- - [x] OcrService 简易线程池队列 (占位)
- - [x] PrivacyService 邮箱/手机号正则扫描基础
+## v0.4 - 历史记录增强
+- [ ] 历史缩略图懒加载
+- [ ] 历史搜索（按时间、标签）
+- [ ] 历史清理策略（自动删除旧文件）
+- [ ] 历史分类（项目、标签）
+- [ ] 历史同步（多设备）
 
-## m3
-- [ ] OcrService 线程池 (占位线程池已具雏形, 待真实 OCR 集成)
-- [x] PrivacyService 扫描 (扩展: URL/IPv4/手机号) + mask 占位
-- [ ] PrivacyService Mosaic (待图像处理阶段)
-- [ ] Upload 支持
- - [ ] RegionSelectService 集成（调用 ui_overlay 框选 UI，返回 Rect）
+## v0.5 - OCR 和 Privacy 实现
+- [ ] OcrService 集成 tesseract
+- [ ] OCR 缓存层（避免重复识别）
+- [ ] PrivacyService 增强（更多敏感信息类型）
+- [ ] 自动打码服务（检测到隐私信息自动马赛克）
+- [ ] OCR 结果结构化（表格、段落识别）
 
-## m4
-- [ ] HookService + 超时
-- [ ] 全事件发布
-- [ ] Export 并发限制
+## v1.0 - 高级服务
+- [ ] 插件服务框架（动态加载标注类型）
+- [ ] 协作服务（多人同时标注）
+- [ ] 版本管理服务（标注版本历史）
+- [ ] AI 辅助服务（智能识别、建议标注）
+- [ ] 模板市场（标注模板分享）
 
-## m5
-- [ ] 性能调优 buffer 池
+## 性能优化
+- [ ] ExportService 异步导出（spawn_blocking）
+- [ ] 渲染缓存（相同标注不重复渲染）
+- [ ] 增量导出（只重新渲染变化部分）
+- [ ] 内存池（减少 Vec 分配）
 
-## 持续
-- [ ] 集成测试完善
-- [ ] 事件负载回归
- - [ ] 剪贴板失败重试策略实现 (当前直接返回)
- - [ ] Export 并发写锁/限速评估
- - [ ] History 查询/过滤 API
-	- [ ] 剪贴板失败重试策略监控（已添加一次重试，实现后需指标化）
- - [x] 基础 Metrics 计数/耗时导出 (infra::metrics)
+## 持续维护
+- [ ] 单元测试覆盖率提升
+- [ ] 集成测试（完整导出流程）
+- [ ] 错误处理完善（更友好的错误信息）
+- [ ] 日志记录优化（结构化日志）

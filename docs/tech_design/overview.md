@@ -1,33 +1,74 @@
 # 技术设计总览
 
-本文件概述整体架构与当前（MVP）实现范围；详细设计请查看各模块文档。
+本文件概述整体架构与当前实现范围；详细设计请查看各模块文档。
 
-## MVP 范围
-与 `docs/prd/mvp.md` 一致：
-- 捕获：全屏 + 内存裁剪（临时）；区域选择由自研框选 UI 提供（不依赖系统 `screencapture`）
-- 标注：Rect / Arrow / Text + Undo/Redo + 简单图层顺序
-- 导出：PNG 保存 & 剪贴板 + 命名模板
-- 历史：最近 50 条（路径+缩略图）加载/裁剪
-- CLI：capture / capture-region
- - 序列：命名模板 {seq} 跨进程持久化 (.history/seq.txt) 保证同日连续递增
- - CLI 辅助：--mock 选项供无权限/测试环境跳过真实屏幕捕获
+## 项目定位
+专注于交互式框选截图的核心能力，支持多显示器和跨显示器截图功能。
 
-注：模型中预置的 Highlight / Mosaic / Freehand / JPEG 编码器不属于当前验收范围。
+## 功能范围
+- **交互式截图**：基于自研 UI overlay 的区域选择框架，支持实时预览和精确选择
+- **多显示器支持**：检测所有显示器并支持跨屏幕区域选择
+- **虚拟桌面坐标系**：统一的多显示器坐标管理系统
+- **高性能渲染**：基于 Skia 的 GPU 加速渲染（Metal/OpenGL/CPU 降级）
+- **导出功能**：PNG 保存 & 剪贴板输出
+- **命名模板**：支持 {date}、{seq} 等变量的文件命名
+- **标注数据模型**：完整的 Annotation 数据结构和序列化
+- **标注渲染**：支持矩形、箭头、文本、马赛克、手绘等多种标注类型的离线渲染
 
 ## 架构层次
-1. core：纯模型+算法（Annotation/Undo/命名模板/History 裁剪）
-2. renderer：像素合成（CPU RGBA）
-3. platform_*：平台捕获/剪贴板（macOS 基于 xcap）
-4. services：编排（capture/annotate/export/history）
-5. api_cli / api_napi：接口层（当前仅 CLI）
-6. infra：通用设施（事件、配置、路径、LRU）
-7. ui_overlay：交互框选（自研 GUI 选择器）
+1. **core**：纯模型+算法（Screenshot/Frame/Annotation/命名模板/UndoStack）
+2. **renderer**：离线标注渲染器（CPU RGBA 像素合成）
+3. **ui_overlay**：交互框选 GUI（Skia GPU 渲染 + 区域选择器）
+4. **platform_mac**：macOS 截图实现（xcap + 虚拟桌面）
+5. **services**：编排服务（CaptureService/ExportService/AnnotationService）
+6. **api_cli**：CLI 接口（capture-interactive 命令）
+7. **infra**：通用设施（事件总线、配置、路径、LRU、指标）
 
-## MVP 期间约束
-- 错误统一 core::ErrorKind 子集
-- 线程模型：同步或轻量 tokio（无复杂并发）
-- 持久化：History 追加写 JSON 行
- - 序列持久化：每输出目录 .history/seq.txt 记录 `YYYYMMDD last_seq`，启动时载入；跨日自动重置
+## 当前实现状态
+
+### 已完成（v0.1）
+- ✅ 交互式区域选择（鼠标拖拽、键盘控制）
+- ✅ 多显示器检测和跨屏选择
+- ✅ Skia GPU 渲染（Metal/OpenGL/CPU 三层降级）
+- ✅ 虚拟桌面坐标系统
+- ✅ 截图捕获和裁剪
+- ✅ PNG 导出和剪贴板集成
+- ✅ Annotation 数据模型（7 种标注类型）
+- ✅ 标注离线渲染（渲染已有标注到图像）
+- ✅ 撤销/重做数据结构
+
+### 待实现（v0.2+）
+- ⏳ 标注编辑 UI（工具栏、颜色选择器）
+- ⏳ 实时标注绘制交互（鼠标绘制预览）
+- ⏳ 状态机扩展（选择模式 → 编辑模式）
+- ⏳ Skia 标注渲染（GPU 加速替代当前 CPU 渲染）
+- ⏳ 文字输入功能
+- ⏳ Windows 平台完整支持
+
+## 当前约束
+- 错误统一使用 `anyhow::Result` 和 core 定义的错误类型
+- 线程模型：同步或轻量异步（无复杂并发）
+- 仅 macOS 平台完整实现，Windows 平台基础框架已就绪
+- 当前只有区域选择流程，标注编辑 UI 待开发
+
+## 架构特点
+
+### 模块职责清晰
+- **core**: 不依赖任何平台或 UI，纯数据和算法
+- **renderer**: 不依赖 UI，纯像素操作，可用于服务端渲染
+- **ui_overlay**: 不依赖具体平台，通过 trait 抽象
+- **platform_***: 封装平台特定 API，对外提供统一接口
+- **services**: 协调各模块，提供业务逻辑
+
+### 双渲染路径
+- **Skia GPU 渲染**: 用于交互式 UI（ui_overlay），高性能实时渲染
+- **CPU 像素渲染**: 用于离线标注合成（renderer），无 GPU 依赖
+
+### 坐标系统
+- 虚拟桌面坐标：以主显示器左上角为原点的全局坐标
+- 显示器相对坐标：每个显示器内部的局部坐标
+- Region 对象携带 scale 信息，用于 HiDPI 适配
 
 ---
-注：OCR/Privacy/GPU/SIMD/DirtyRect/上传等扩展不在本文档范围内。
+
+注：OCR/Privacy/History 等扩展功能的数据结构和服务占位已在代码中，但不在当前 MVP 范围内。

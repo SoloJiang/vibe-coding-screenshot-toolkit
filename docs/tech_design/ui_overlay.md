@@ -1,7 +1,7 @@
 # ui_overlay 模块技术设计
 
 ## 职责与边界
-- 提供跨平台的屏幕“框选区域”交互层（Overlay UI）。
+- 提供跨平台的屏幕"框选区域"交互层（Overlay Window），支持鼠标拖拽选择矩形区域。
 - 输出一个逻辑坐标系下的矩形 Region 以及屏幕缩放因子 scale，供 services 使用对全屏截图进行裁剪，而非再次调用系统截图命令。
 - 不直接负责像素渲染（交由 renderer）与业务编排（交由 services）。
 
@@ -9,9 +9,17 @@
 crate 暴露：
 - 结构体 `Region { x, y, w, h, scale }`，提供 `norm()` 规范化（处理负拖动）。
 - 错误 `OverlayError::{Cancelled, Internal}` 与 `type Result<T>`。
-- Trait `RegionSelector { fn select(&self) -> Result<Region> }`：阻塞直到用户确认或取消。
-- 扩展方法 `select_with_background(&self, rgb, width, height) -> Result<Option<Region>>`：默认包装 `select()`；平台可利用背景预览（如 macOS 集成）。
+- Trait `RegionSelector` 提供多层级选择接口：
+  - `select(&self) -> Result<Region>`：基础阻塞选择，返回本地坐标
+  - `select_with_background(&self, rgb, width, height) -> Result<Option<Region>>`：带背景预览的选择
+  - `select_with_virtual_background(&self, rgb, width, height, virtual_bounds, display_offset) -> Result<Option<Region>>`：✅ **新增** 虚拟桌面坐标选择
 - `MockSelector`：无 UI，返回固定 Region 或 Cancelled，便于测试。
+
+### 虚拟桌面支持 ✅ 已实现
+- **虚拟坐标转换**：`select_with_virtual_background()` 自动将本地坐标转换为虚拟桌面全局坐标
+- **跨显示器选择**：支持选择跨越多个显示器的区域，返回虚拟桌面坐标
+- **显示器偏移处理**：自动处理当前交互显示器在虚拟桌面中的位置偏移
+- **统一坐标系**：所有跨显示器操作使用统一的虚拟桌面坐标系统
 
 ## 事件与交互
 - 鼠标左键拖拽：绘制/调整矩形。
@@ -22,23 +30,104 @@ crate 暴露：
 - `x,y,w,h` 为逻辑坐标（winit 的 logical）；`scale = window.scale_factor()`。
 - 裁剪像素矩形时应使用：`px = round(x*scale) ...`，并对边界做 clamp。
 
+### 多显示器坐标系统 ✅ 已实现并修复
+- **虚拟桌面坐标**：以主显示器左上角为原点的全局坐标系
+- **显示器相对坐标**：每个显示器内部的局部坐标系
+- **跨显示器区域**：使用虚拟桌面坐标描述跨越多个显示器的区域
+- **DPI 适配**：自动处理不同显示器间的 DPI 差异和缩放
+- **坐标转换一致性**：统一处理鼠标事件坐标转换和渲染坐标转换，确保选择框正确显示在对应位置
+- **修复记录**：解决了非主屏框选坐标错误和选择框显示位置错误的问题
+
 ## 平台实现
-- 统一采用 `winit + pixels` 的跨平台实现，文件：`crates/ui_overlay/src/selector.rs`。
-- 渲染：在 `pixels` 帧缓冲中绘制真实桌面截图背景、选区外暗化、选区白色描边，选区内部保持透明效果。
+- 统一采用 `winit + Skia` 的跨平台实现，文件：`crates/ui_overlay/src/selector.rs`。
+- 渲染：使用 Skia 2D 图形库进行高质量渲染，支持 GPU 加速和 CPU fallback，绘制真实桌面截图背景、选区外暗化、选区白色描边，选区内部保持透明效果。
 - 平台胶水隔离：新增 `ui_overlay::platform` 模块（`crates/ui_overlay/src/platform/mod.rs`），封装 macOS 的菜单栏/Dock 隐藏等呈现设置，核心选择器仅调用 `start_presentation()/end_presentation()`，减少条件编译分支和跨端耦合。
 - macOS：通过 Cocoa API（仅在 macOS 分支编译）设置 NSWindow 为无边框、不可拖动、提升窗口层级、隐藏 Dock 和菜单栏，并将窗口 frame 设置为整个屏幕区域（非 visibleFrame），确保完全覆盖。
-- Windows：使用同一套 winit 事件与 pixels 渲染路径；可选增强为窗口置顶与穿透。
- - 启动性能优化：窗口初始不可见（with_visible(false)），创建后立即预热 Pixels（ensure_pixels + render_once），再显示并 request_redraw；空闲阶段不进行持续重绘（about_to_wait 不再 request_redraw），仅在输入/尺寸变化时重绘。
+- Windows：使用同一套 winit 事件与 Skia 渲染路径；可选增强为窗口置顶与穿透。
+ - 启动性能优化：窗口初始不可见（with_visible(false)），创建后立即预热 Skia Surface（ensure_surface + render_once），再显示并 request_redraw；空闲阶段不进行持续重绘（about_to_wait 不再 request_redraw），仅在输入/尺寸变化时重绘。
 
-### 渲染性能与拖动优化
-- 背景暗化策略：
-  - 若提供背景 RGB（截图像素），在窗口创建后预先计算一份“变暗背景”（bg_dim），暗化公式与原先一致（a=90/255）。
-  - 每帧渲染时直接将 bg_dim 拷贝到帧缓冲，不再进行全屏 per-pixel 混合。
-  - 选区内部从原始 bg 恢复（逐行拷贝），然后绘制白色描边。
-- 重绘节流：
-  - 引入 `redraw_pending` 标志，避免在高频 `CursorMoved`/按键事件中重复调用 `request_redraw()`，在一次有效绘制完成后清零。
-- 尺寸变化：
-  - `resize_surface` 后仍按需 request_redraw，保持与预热路径一致。
+### 多显示器渲染架构
+- **全局覆盖**：在所有显示器上创建全屏覆盖窗口
+- **窗口管理**：为每个显示器创建独立的 winit 窗口实例
+- **事件同步**：统一处理来自不同显示器窗口的输入事件
+- **跨窗口渲染**：支持绘制跨越多个显示器的选择区域
+- **边界可视化**：在显示器边界处显示分割线或提示信息
+
+### Skia 渲染架构 ✅ 已完成
+- **RenderBackend 抽象层**：新建 `backend` 子模块，定义统一的 `RenderBackend` trait，封装不同平台的 GPU/CPU 渲染实现。
+  - `BackendType` 枚举：MetalGpu, Direct3dGpu, CpuRaster
+  - `RenderBackend` trait：提供 `prepare_surface()`, `canvas()`, `flush_and_read_pixels()`, `resize()` 等统一接口
+  - `factory.rs`：根据平台自动选择最佳可用后端
+
+- **后端实现（已完成）**：
+  1. **macOS Metal GPU**（`metal_backend.rs`）：
+     - 使用 `metal-rs` crate 实现原生 Metal 渲染
+     - 通过 `CAMetalLayer` 直接渲染到窗口，无需 softbuffer
+     - 每帧从 layer 获取 `MetalDrawable`，创建 Skia GPU Surface
+     - `flush_and_read_pixels()` 中调用 `drawable.present()` 提交到屏幕
+     - 支持 Skia `DirectContext` 硬件加速渲染
+  2. **CPU Raster**（`cpu_backend.rs`）：
+     - 使用 `Surface::new_raster_n32_premul` 创建 CPU 渲染表面
+     - 读取像素后通过 `softbuffer` 提交到窗口
+     - 作为 GPU 不可用时的降级方案
+  3. **Windows Direct3D**（待实现）：
+     - 计划使用 `wgpu` 或 `windows-rs` 实现 D3D11/D3D12 渲染
+     - 架构与 Metal 类似，通过 DirectX 直接渲染到窗口
+
+- **后端选择策略**：
+  1. macOS 优先使用 Metal GPU（`DirectContext::make_metal` + `CAMetalLayer`）
+  2. Windows 将优先使用 Direct3D GPU（Phase 3）
+  3. 任一 GPU 初始化失败时自动降级到 CPU Raster
+  4. CPU Raster 使用 `softbuffer` 确保所有环境都能正常显示
+
+- **Surface 生命周期**：
+  - 每个窗口持有独立的 `RenderBackend` 实例
+  - `prepare_surface()` 在每帧开始时准备渲染表面（GPU 获取 drawable，CPU 创建 raster surface）
+  - `canvas()` 返回 Skia Canvas 用于绘制
+  - `flush_and_read_pixels()` 提交渲染结果（GPU 调用 present，CPU 返回像素数据）
+  - `resize()` 处理窗口尺寸变化
+
+- **渲染流程**：
+  1. `WindowInfo::render_with_backend()` 接收绘制闭包
+  2. 调用 `backend.prepare_surface()` 准备当前帧
+  3. 通过 `backend.canvas()` 获取 Canvas 并执行绘制闭包：
+     - 绘制暗化背景图像（Skia Image，缓存）
+     - 绘制选区内原始背景（裁剪 + 图像绘制）
+     - 绘制选择框边框（白色描边）
+  4. 调用 `backend.flush_and_read_pixels()` 提交结果
+  5. GPU backend 直接 present，CPU backend 通过 softbuffer 呈现
+
+- **坐标转换修复**：
+  - 统一虚拟桌面坐标到窗口本地坐标的转换公式：`local = virtual - window_virtual`
+  - 确保背景偏移和选择框坐标使用相同的转换逻辑
+  - 修复了选择框在非主显示器上位置错误的问题
+
+### 渲染性能与拖动优化 ✅ 已完成
+- **背景图像缓存**（`ImageCache`）：
+  - 预先计算暗化背景，避免每帧重新计算像素
+  - 将 RGBA 像素数据转换为 `skia_safe::Image` 并缓存
+  - 分别缓存原始背景和暗化背景的 Skia Image
+  - 避免每帧重复创建 Image 对象，显著提升性能
+
+- **帧率控制**（`FrameTimer`）：
+  - 限制渲染频率为 60 FPS（16.67ms/帧）
+  - 在 `request_redraw_all()` 中统一检查帧率限制
+  - 确保所有窗口在同一帧配额内渲染，避免帧率限制导致部分窗口无法渲染
+  - 修复了多窗口渲染时窗口1被帧率限制拦截的问题
+
+- **重绘节流**：
+  - 引入 `redraw_pending` 标志，避免高频事件重复请求重绘
+  - 增加鼠标移动距离阈值（3.0像素），减少微小移动时的重绘
+  - 智能判断是否处于拖动状态，只在必要时重绘
+
+- **窗口预热**：
+  - 窗口初始不可见（`with_visible(false)`）
+  - 先创建 RenderBackend 并预热渲染
+  - 完成首次渲染后再显示窗口，避免屏幕闪动
+
+- **尺寸变化处理**：
+  - 窗口 resize 时调用 `backend.resize()` 更新尺寸
+  - 下次 `prepare_surface()` 时会重建对应尺寸的 Surface
 
 ## 错误与取消语义
 - 用户按 Esc/关闭窗口 -> `OverlayError::Cancelled`。

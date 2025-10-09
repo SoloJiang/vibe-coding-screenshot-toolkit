@@ -6,6 +6,8 @@ pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+use winit::window::Window;
+
 /// Guard object for temporary presentation changes (opaque across OS).
 pub struct PresentationGuard(
     #[cfg(target_os = "macos")] pub(crate) macos::GuardInner,
@@ -43,5 +45,17 @@ pub fn end_presentation(guard: PresentationGuard) {
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         let _ = guard; // no-op
+    }
+}
+
+/// Apply overlay-specific window appearance tweaks.
+pub fn apply_overlay_window_appearance(window: &Window, color: [u8; 4]) {
+    #[cfg(target_os = "macos")]
+    {
+        macos::apply_overlay_window_appearance(window, color);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, color);
     }
 }
