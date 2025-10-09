@@ -12,23 +12,23 @@ chrono = { workspace = true }
 parking_lot = { workspace = true }
 winit = "0.30"
 image = { workspace = true }
-skia-safe = { workspace = true }
 softbuffer = "0.4.6"
-glutin = "0.32"
-glutin-winit = "0.5"
 raw-window-handle = "0.6"
 
-# macOS 依赖：用于窗口层级/行为控制（selector.rs 的 macOS 分支）
+# 默认使用工作区的 skia-safe 配置（GL + textlayout + svg）
+skia-safe = { workspace = true }
+
+# macOS 依赖：用于窗口层级/行为控制和 Metal GPU 渲染
 [target.'cfg(target_os = "macos")'.dependencies]
+# 在 macOS 上启用 Metal 特性
+skia-safe = { version = "0.88", features = ["gl", "metal", "textlayout", "svg"] }
+
+# Objective-C 运行时交互（平台集成）
 objc2 = "0.6.2"
-objc2-foundation = "0.3.1"
-objc2-core-foundation = "0.3.1"
 objc2-app-kit = "0.3.1"
-objc2-metal = "0.3.1"
-objc2-quartz-core = "0.3.1"
-core-graphics-types = "0.1"
-core-graphics = "0.24"
-# Metal GPU 渲染（使用 metal-rs，更符合 Rust 习惯）
+
+# Metal GPU 渲染
 metal = "0.29"
 cocoa = "0.25"
+core-graphics-types = "0.1"
 
