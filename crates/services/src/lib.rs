@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
-
 // 缩略图生成常量
 const THUMBNAIL_MAX_SIZE: u32 = 240; // 缩略图最长边像素数
 
@@ -328,8 +327,7 @@ impl<CP: Clipboard> ExportService<CP> {
         screenshot: &Screenshot,
         annotations: &[Annotation],
         path: P,
-    ) -> anyhow::Result<()>
-    {
+    ) -> anyhow::Result<()> {
         // 在当前线程渲染（CPU密集）
         let bytes = self.render_png_bytes(screenshot, annotations)?;
 

@@ -17,7 +17,7 @@ use std::future::Future;
 /// ```no_run
 /// use infra::runtime::spawn_blocking_rayon;
 ///
-/// async fn process_image(data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+/// async fn process_image(data: Vec<u8>) -> Result<Vec<u8>, tokio::task::JoinError> {
 ///     spawn_blocking_rayon(move || {
 ///         // 这里可以使用 rayon 的并行迭代器
 ///         use rayon::prelude::*;

@@ -112,11 +112,11 @@ fn test_privacy_scan_basic() {
     assert_eq!(masked.len(), text.len());
 }
 
-#[test]
-fn test_ocr_service_queue() {
+#[tokio::test]
+async fn test_ocr_service_queue() {
     let ocr = services::OcrService::new(2);
-    let receiver = ocr.recognize_async(vec![1, 2, 3, 4]).unwrap();
-    let res = receiver.recv().expect("ocr result");
+    let receiver = ocr.recognize_async(vec![1, 2, 3, 4]).await.unwrap();
+    let res = receiver.await.expect("ocr result");
     assert!(res.is_err(), "stub should return unsupported error");
 }
 
