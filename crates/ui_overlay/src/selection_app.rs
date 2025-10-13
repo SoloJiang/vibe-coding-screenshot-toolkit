@@ -31,6 +31,8 @@ pub struct SelectionApp {
     image_cache: ImageCache,
     /// 帧率控制器，限制到 60 FPS
     frame_timer: FrameTimer,
+    /// 显示器布局信息（用于精确定位窗口）
+    monitor_layouts: Option<Vec<crate::MonitorLayout>>,
 }
 
 /// 渲染数据结构
@@ -47,6 +49,7 @@ impl SelectionApp {
         bg_w: u32,
         bg_h: u32,
         virtual_bounds: Option<(i32, i32, u32, u32)>,
+        monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> Self {
         Self {
             attrs,
@@ -60,6 +63,7 @@ impl SelectionApp {
             state: SelectionState::new(virtual_bounds),
             image_cache: ImageCache::new(),
             frame_timer: FrameTimer::new(TARGET_FPS),
+            monitor_layouts: monitor_layouts.map(|layouts| layouts.to_vec()),
         }
     }
 
@@ -74,7 +78,9 @@ impl SelectionApp {
             return;
         }
 
-        self.ensure_tinted_background();
+        // 确保背景和图像缓存已初始化
+        self.ensure_backgrounds_and_cache();
+
         let render_data = self.prepare_render_data(window_index);
 
         // 渲染当前帧
@@ -83,7 +89,7 @@ impl SelectionApp {
         }
     }
 
-    fn prepare_render_data(&self, window_index: usize) -> RenderData {
+    fn prepare_render_data(&mut self, window_index: usize) -> RenderData {
         let (x0c, y0c, x1c, y1c) = self.state.calculate_selection_rect();
         // 只要有有效的选择尺寸，就应该渲染选择框
         // 无论是否正在拖动，这样在拖动完成后选择框依然显示
@@ -92,7 +98,7 @@ impl SelectionApp {
         let window_info = &self.window_manager.windows[window_index];
         let window_needs_selection = WindowRenderer::should_render_selection(
             selection_exists,
-            &self.state,
+            &mut self.state,
             window_info.virtual_x,
             window_info.virtual_y,
             window_info.size_px.width,
@@ -112,20 +118,18 @@ impl SelectionApp {
         let window_virtual_x = self.window_manager.windows[window_index].virtual_x;
         let window_virtual_y = self.window_manager.windows[window_index].virtual_y;
 
-        // 先准备缓存的图像（避免借用冲突）
-        let bg_tinted_image = if let Some(ref bg_tinted) = self.bg_tinted {
-            self.image_cache
-                .get_or_create_tinted_image(bg_tinted, self.bg_w, self.bg_h)
-        } else {
-            None
-        };
+        #[cfg(debug_assertions)]
+        if render_data.selection_exists {
+            let (x0, y0, x1, y1) = render_data.selection_rect;
+            tracing::debug!(
+                "渲染窗口 {}: virtual_pos({}, {}), 选择框虚拟坐标({}, {}, {}, {})",
+                window_index, window_virtual_x, window_virtual_y, x0, y0, x1, y1
+            );
+        }
 
-        let original_image = if let Some(ref bg) = self.bg {
-            self.image_cache
-                .get_or_create_original_image(bg, self.bg_w, self.bg_h)
-        } else {
-            None
-        };
+        // 获取缓存的图像（不再需要每次创建）
+        let bg_tinted_image = self.image_cache.get_tinted_image();
+        let original_image = self.image_cache.get_original_image();
 
         let window_info = &mut self.window_manager.windows[window_index];
         let virtual_bounds = self.state.virtual_bounds;
@@ -221,15 +225,22 @@ impl SelectionApp {
         })
     }
 
-    fn ensure_tinted_background(&mut self) {
-        if self.bg_tinted.is_some() {
-            return;
+    /// 确保背景暗化和图像缓存都已初始化
+    ///
+    /// 性能优化：只在首次调用时处理，后续调用直接返回
+    fn ensure_backgrounds_and_cache(&mut self) {
+        // 生成暗化背景（如果尚未生成）
+        if self.bg_tinted.is_none() {
+            if let Some(bg) = &self.bg {
+                if !bg.is_empty() && self.bg_w > 0 && self.bg_h > 0 {
+                    self.bg_tinted = Some(BackgroundProcessor::tint_background(bg, self.overlay_color));
+                }
+            }
         }
 
-        if let Some(bg) = &self.bg {
-            if !bg.is_empty() && self.bg_w > 0 && self.bg_h > 0 {
-                self.bg_tinted = Some(BackgroundProcessor::tint_background(bg, self.overlay_color));
-            }
+        // 一次性初始化 Skia Image 缓存
+        if let (Some(ref bg), Some(ref bg_tinted)) = (&self.bg, &self.bg_tinted) {
+            self.image_cache.ensure_images_cached(bg, bg_tinted, self.bg_w, self.bg_h);
         }
     }
 
@@ -378,7 +389,7 @@ impl SelectionApp {
         }
     }
 
-    fn create_region(&self, window_index: usize) -> Option<Region> {
+    fn create_region(&mut self, window_index: usize) -> Option<Region> {
         let scale_out = if self.state.virtual_bounds.is_some() {
             1.0
         } else {
@@ -395,12 +406,39 @@ impl ApplicationHandler for SelectionApp {
             return;
         }
 
+        // 使用提供的显示器布局信息（如果有）
         self.window_manager
-            .initialize_windows(event_loop, &self.attrs);
+            .initialize_windows_with_layouts(event_loop, &self.attrs, self.monitor_layouts.as_deref());
+
+        // 添加调试信息
+        #[cfg(debug_assertions)]
+        if let Some(ref layouts) = self.monitor_layouts {
+            tracing::debug!("使用提供的显示器布局信息: {} 个显示器", layouts.len());
+            for (i, layout) in layouts.iter().enumerate() {
+                tracing::debug!(
+                    "  显示器 {}: 位置({}, {}), 尺寸{}x{}, scale={}",
+                    i, layout.x, layout.y, layout.width, layout.height, layout.scale_factor
+                );
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            tracing::debug!("创建了 {} 个窗口", self.window_manager.windows.len());
+            for (i, window_info) in self.window_manager.windows.iter().enumerate() {
+                tracing::debug!(
+                    "  窗口 {}: virtual_pos({}, {}), size_px={}x{}, scale={}",
+                    i, window_info.virtual_x, window_info.virtual_y,
+                    window_info.size_px.width, window_info.size_px.height, window_info.scale
+                );
+            }
+        }
 
         if !self.window_manager.windows.is_empty() {
             self.pres_guard = platform::start_presentation();
-            self.ensure_tinted_background();
+
+            // 一次性初始化背景和图像缓存
+            self.ensure_backgrounds_and_cache();
 
             #[cfg(target_os = "macos")]
             {
@@ -410,8 +448,13 @@ impl ApplicationHandler for SelectionApp {
                 }
             }
 
+            // 先渲染所有窗口的首帧，避免显示时出现粉色背景
             for i in 0..self.window_manager.windows.len() {
                 self.render_window_by_index(i);
+            }
+
+            // 首帧渲染完成后再显示窗口
+            for i in 0..self.window_manager.windows.len() {
                 self.window_manager.windows[i].window.set_visible(true);
                 self.window_manager.windows[i].window.request_redraw();
             }

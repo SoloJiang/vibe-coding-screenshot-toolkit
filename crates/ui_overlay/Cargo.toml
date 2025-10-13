@@ -26,9 +26,9 @@ skia-safe = { version = "0.88", features = ["gl", "metal", "textlayout", "svg"] 
 # Objective-C 运行时交互（平台集成）
 objc2 = "0.6.2"
 objc2-app-kit = "0.3.1"
+objc2-quartz-core = "0.3.1"
 
 # Metal GPU 渲染
 metal = "0.29"
-cocoa = "0.25"
 core-graphics-types = "0.1"
 

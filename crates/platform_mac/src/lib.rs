@@ -32,6 +32,16 @@ pub struct DisplayInfo {
     pub scale_factor: f64,
 }
 
+/// 显示器布局信息（物理坐标，供 UI overlay 使用）
+#[derive(Debug, Clone)]
+pub struct MonitorLayout {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale_factor: f64,
+}
+
 /// 虚拟桌面坐标系统：管理多显示器的统一坐标空间
 #[derive(Debug, Clone)]
 pub struct VirtualDesktop {
@@ -59,6 +69,30 @@ pub struct VirtualBounds {
 }
 
 impl VirtualDesktop {
+    /// 获取所有显示器的物理坐标布局
+    ///
+    /// 注意：返回的坐标和尺寸都是物理像素，因为：
+    /// 1. xcap 捕获的图像是物理像素
+    /// 2. UI overlay 窗口使用 PhysicalSize/PhysicalPosition
+    /// 3. Metal 渲染使用物理像素
+    pub fn get_monitor_layouts() -> Result<Vec<MonitorLayout>> {
+        let desktop = Self::detect()?;
+        Ok(desktop
+            .displays
+            .iter()
+            .map(|d| {
+                let scale = d.scale_factor;
+                MonitorLayout {
+                    x: (d.x as f64 * scale).round() as i32,
+                    y: (d.y as f64 * scale).round() as i32,
+                    width: (d.width as f64 * scale).round() as u32,
+                    height: (d.height as f64 * scale).round() as u32,
+                    scale_factor: d.scale_factor,
+                }
+            })
+            .collect())
+    }
+
     /// 检测并构建虚拟桌面坐标系统
     pub fn detect() -> Result<Self> {
         let monitors = xcap::Monitor::all().context("列出显示器失败")?;
@@ -254,6 +288,8 @@ impl MacCapturer {
     }
 
     /// 多显示器截图：捕获所有显示器并合成为虚拟桌面
+    ///
+    /// 注意：返回的截图使用物理像素坐标系统
     pub fn capture_all() -> Result<Screenshot> {
         use infra::metrics;
         let timer = metrics::start_timer(
@@ -264,15 +300,52 @@ impl MacCapturer {
 
         // 获取虚拟桌面信息
         let virtual_desktop = VirtualDesktop::detect().context("检测虚拟桌面失败")?;
-        let bounds = &virtual_desktop.total_bounds;
 
-        // 创建虚拟桌面画布
-        let canvas_width = bounds.width;
-        let canvas_height = bounds.height;
+        // 计算物理坐标的虚拟边界
+        // xcap 返回的图像是物理像素，所以我们需要用物理坐标来布局
+        let mut physical_min_x = i32::MAX;
+        let mut physical_min_y = i32::MAX;
+        let mut physical_max_x = i32::MIN;
+        let mut physical_max_y = i32::MIN;
+
+        // 先遍历一次计算物理边界
+        let monitors = xcap::Monitor::all().context("列出显示器失败")?;
+        for monitor in &monitors {
+            let monitor_id = monitor.id().unwrap_or(0);
+            let display_info = virtual_desktop
+                .displays
+                .iter()
+                .find(|d| d.id == monitor_id)
+                .context("未找到对应的显示器信息")?;
+
+            // 将逻辑坐标转换为物理坐标
+            let scale = display_info.scale_factor;
+            let phys_x = (display_info.x as f64 * scale).round() as i32;
+            let phys_y = (display_info.y as f64 * scale).round() as i32;
+            let phys_width = (display_info.width as f64 * scale).round() as i32;
+            let phys_height = (display_info.height as f64 * scale).round() as i32;
+
+            physical_min_x = physical_min_x.min(phys_x);
+            physical_min_y = physical_min_y.min(phys_y);
+            physical_max_x = physical_max_x.max(phys_x + phys_width);
+            physical_max_y = physical_max_y.max(phys_y + phys_height);
+        }
+
+        // 创建物理坐标的虚拟桌面画布
+        let canvas_width = (physical_max_x - physical_min_x) as u32;
+        let canvas_height = (physical_max_y - physical_min_y) as u32;
         let mut canvas = vec![0u8; (canvas_width * canvas_height * 4) as usize];
 
-        // 捕获每个显示器并合成到虚拟桌面
-        let monitors = xcap::Monitor::all().context("列出显示器失败")?;
+        #[cfg(debug_assertions)]
+        tracing::debug!(
+            "物理虚拟桌面画布: 边界({}, {}) 尺寸 {}x{}",
+            physical_min_x,
+            physical_min_y,
+            canvas_width,
+            canvas_height
+        );
+
+        // 捕获每个显示器并合成到虚拟桌面（使用物理坐标）
         for monitor in monitors {
             let monitor_id = monitor.id().unwrap_or(0);
             let display_info = virtual_desktop
@@ -286,16 +359,21 @@ impl MacCapturer {
             let (mon_width, mon_height) = (img.width(), img.height());
             let rgba_data = img.into_raw();
 
-            // 计算在虚拟桌面画布中的位置
-            let canvas_x = (display_info.x - bounds.min_x) as u32;
-            let canvas_y = (display_info.y - bounds.min_y) as u32;
+            // 计算在虚拟桌面画布中的位置（物理坐标）
+            let scale = display_info.scale_factor;
+            let phys_x = (display_info.x as f64 * scale).round() as i32;
+            let phys_y = (display_info.y as f64 * scale).round() as i32;
+            let canvas_x = (phys_x - physical_min_x) as u32;
+            let canvas_y = (phys_y - physical_min_y) as u32;
 
             #[cfg(debug_assertions)]
             tracing::debug!(
-                "显示器合成: 显示器{}({},{}) -> canvas({},{}) 尺寸{}x{}",
+                "显示器合成 [物理坐标]: 显示器{} 逻辑({},{}) -> 物理({},{}) -> canvas({},{}) 尺寸{}x{}",
                 monitor_id,
                 display_info.x,
                 display_info.y,
+                phys_x,
+                phys_y,
                 canvas_x,
                 canvas_y,
                 mon_width,
@@ -348,9 +426,13 @@ impl MacCapturer {
         #[cfg(debug_assertions)]
         {
             tracing::debug!(
-                "虚拟桌面调试: 尺寸 {}x{}",
+                "虚拟桌面调试: 尺寸 {}x{}, 边界({}, {}) 到 ({}, {})",
                 virtual_frame.width,
-                virtual_frame.height
+                virtual_frame.height,
+                virtual_desktop.total_bounds.min_x,
+                virtual_desktop.total_bounds.min_y,
+                virtual_desktop.total_bounds.max_x,
+                virtual_desktop.total_bounds.max_y
             );
             tracing::debug!(
                 "虚拟桌面调试: 显示器数量 {}",
@@ -358,12 +440,14 @@ impl MacCapturer {
             );
             for (i, display_info) in virtual_desktop.displays.iter().enumerate() {
                 tracing::debug!(
-                    "显示器 {}: 位置({}, {}), 尺寸{}x{}, 主屏={}",
+                    "显示器 {} [逻辑坐标]: ID={}, 位置({}, {}), 尺寸{}x{}, scale={}, 主屏={}",
                     i,
+                    display_info.id,
                     display_info.x,
                     display_info.y,
                     display_info.width,
                     display_info.height,
+                    display_info.scale_factor,
                     display_info.is_primary
                 );
             }
@@ -376,13 +460,55 @@ impl MacCapturer {
             .flat_map(|rgba| [rgba[0], rgba[1], rgba[2]]) // 跳过alpha通道
             .collect();
 
-        // 构建虚拟桌面信息用于区域选择
-        let virtual_bounds = (
-            virtual_desktop.total_bounds.min_x,
-            virtual_desktop.total_bounds.min_y,
-            virtual_desktop.total_bounds.width,
-            virtual_desktop.total_bounds.height,
-        );
+        // 获取显示器布局信息（物理坐标）
+        let monitor_layouts: Vec<ui_overlay::MonitorLayout> = virtual_desktop
+            .displays
+            .iter()
+            .map(|d| {
+                let scale = d.scale_factor;
+                ui_overlay::MonitorLayout {
+                    x: (d.x as f64 * scale).round() as i32,
+                    y: (d.y as f64 * scale).round() as i32,
+                    width: (d.width as f64 * scale).round() as u32,
+                    height: (d.height as f64 * scale).round() as u32,
+                    scale_factor: d.scale_factor,
+                }
+            })
+            .collect();
+
+        // 计算物理坐标的虚拟边界
+        let physical_min_x = monitor_layouts.iter().map(|m| m.x).min().unwrap_or(0);
+        let physical_min_y = monitor_layouts.iter().map(|m| m.y).min().unwrap_or(0);
+        let physical_max_x = monitor_layouts.iter().map(|m| m.x + m.width as i32).max().unwrap_or(0);
+        let physical_max_y = monitor_layouts.iter().map(|m| m.y + m.height as i32).max().unwrap_or(0);
+        let physical_width = (physical_max_x - physical_min_x) as u32;
+        let physical_height = (physical_max_y - physical_min_y) as u32;
+
+        // 添加物理坐标转换的调试信息
+        #[cfg(debug_assertions)]
+        {
+            tracing::debug!("转换为物理坐标后:");
+            for (i, layout) in monitor_layouts.iter().enumerate() {
+                tracing::debug!(
+                    "显示器 {} [物理坐标]: 位置({}, {}), 尺寸{}x{}",
+                    i,
+                    layout.x,
+                    layout.y,
+                    layout.width,
+                    layout.height
+                );
+            }
+            tracing::debug!(
+                "物理虚拟边界: ({}, {}) 尺寸 {}x{}",
+                physical_min_x,
+                physical_min_y,
+                physical_width,
+                physical_height
+            );
+        }
+
+        // 构建虚拟桌面信息用于区域选择（物理坐标）
+        let virtual_bounds = (physical_min_x, physical_min_y, physical_width, physical_height);
         let display_offset = (0, 0); // 现在使用虚拟桌面坐标，不需要偏移
 
         // 使用支持虚拟桌面的选择方法
@@ -393,6 +519,7 @@ impl MacCapturer {
                 virtual_frame.height,
                 virtual_bounds,
                 display_offset,
+                Some(&monitor_layouts),
             )
             .map_err(|e| {
                 metrics::counter("interactive_error").inc();
@@ -410,7 +537,7 @@ impl MacCapturer {
             }
         };
 
-        // 坐标已经是虚拟桌面坐标，直接使用
+        // 坐标已经是物理虚拟桌面坐标，直接使用
         let scale = if rect.scale.is_finite() && rect.scale > 0.0 {
             rect.scale
         } else {
@@ -423,9 +550,9 @@ impl MacCapturer {
         let h = (rect.h * scale).round().max(0.0) as u32;
 
         // 在虚拟桌面坐标系中进行裁剪
-        let bounds = &virtual_desktop.total_bounds;
-        let canvas_x = (x_virtual - bounds.min_x).max(0) as u32;
-        let canvas_y = (y_virtual - bounds.min_y).max(0) as u32;
+        // 注意：现在选择区域和画布都是物理坐标，所以使用物理边界
+        let canvas_x = (x_virtual - physical_min_x).max(0) as u32;
+        let canvas_y = (y_virtual - physical_min_y).max(0) as u32;
         let canvas_x2 = (canvas_x + w).min(virtual_frame.width);
         let canvas_y2 = (canvas_y + h).min(virtual_frame.height);
         let cw = canvas_x2.saturating_sub(canvas_x);
@@ -442,21 +569,21 @@ impl MacCapturer {
                 rect.w,
                 rect.h
             );
-            tracing::debug!("  虚拟坐标: ({}, {}, {}, {})", x_virtual, y_virtual, w, h);
+            tracing::debug!("  应用scale后物理坐标: ({}, {}, {}, {})", x_virtual, y_virtual, w, h);
             tracing::debug!(
-                "  虚拟边界: min({}, {}), max({}, {})",
-                bounds.min_x,
-                bounds.min_y,
-                bounds.max_x,
-                bounds.max_y
+                "  物理虚拟边界: min({}, {}), max({}, {})",
+                physical_min_x,
+                physical_min_y,
+                physical_min_x + physical_width as i32,
+                physical_min_y + physical_height as i32
             );
             tracing::debug!(
                 "  Canvas计算: ({} - {}) = {}, ({} - {}) = {}",
                 x_virtual,
-                bounds.min_x,
+                physical_min_x,
                 canvas_x,
                 y_virtual,
-                bounds.min_y,
+                physical_min_y,
                 canvas_y
             );
             tracing::debug!(
@@ -467,16 +594,9 @@ impl MacCapturer {
                 ch
             );
             tracing::debug!(
-                "  虚拟桌面尺寸: {}x{}",
+                "  画布尺寸: {}x{}",
                 virtual_frame.width,
                 virtual_frame.height
-            );
-            tracing::debug!(
-                "裁剪调试: canvas坐标({}, {}, {}, {})",
-                canvas_x,
-                canvas_y,
-                cw,
-                ch
             );
         }
 

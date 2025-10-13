@@ -50,6 +50,7 @@ impl WinitRegionSelector {
         bg_w: u32,
         bg_h: u32,
         virtual_bounds: Option<(i32, i32, u32, u32)>,
+        monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> crate::MaybeRegion {
         // 转换背景数据
         let bg_rgba: Option<Vec<u8>> = bg_rgb.map(|rgb| self.convert_rgb_to_rgba(rgb, bg_w, bg_h));
@@ -67,7 +68,7 @@ impl WinitRegionSelector {
             .with_visible(false);
 
         // 创建应用程序
-        let mut app = SelectionApp::new(attrs, bg_rgba, bg_w, bg_h, virtual_bounds);
+        let mut app = SelectionApp::new(attrs, bg_rgba, bg_w, bg_h, virtual_bounds, monitor_layouts);
 
         // 运行事件循环
         if let Err(e) = event_loop.run_app(&mut app) {
@@ -80,14 +81,14 @@ impl WinitRegionSelector {
 
 impl RegionSelector for WinitRegionSelector {
     fn select(&self) -> OverlayResult<Region> {
-        match self.run_selector(None, 0, 0, None)? {
+        match self.run_selector(None, 0, 0, None, None)? {
             Some(r) => Ok(r),
             None => Err(OverlayError::Cancelled),
         }
     }
 
     fn select_with_background(&self, rgb: &[u8], width: u32, height: u32) -> crate::MaybeRegion {
-        self.run_selector(Some(rgb), width, height, None)
+        self.run_selector(Some(rgb), width, height, None, None)
     }
 
     fn select_with_virtual_background(
@@ -97,7 +98,8 @@ impl RegionSelector for WinitRegionSelector {
         height: u32,
         virtual_bounds: (i32, i32, u32, u32),
         _display_offset: (i32, i32),
+        monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> crate::MaybeRegion {
-        self.run_selector(Some(rgb), width, height, Some(virtual_bounds))
+        self.run_selector(Some(rgb), width, height, Some(virtual_bounds), monitor_layouts)
     }
 }

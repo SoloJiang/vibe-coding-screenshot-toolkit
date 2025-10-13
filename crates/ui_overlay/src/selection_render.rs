@@ -37,7 +37,7 @@ impl WindowRenderer {
     /// 检查窗口是否需要渲染选择框
     pub fn should_render_selection(
         selection_exists: bool,
-        state: &crate::event_handler::SelectionState,
+        state: &mut crate::event_handler::SelectionState,
         window_virtual_x: i32,
         window_virtual_y: i32,
         window_width: u32,
