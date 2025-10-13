@@ -68,7 +68,8 @@ impl WinitRegionSelector {
             .with_visible(false);
 
         // 创建应用程序
-        let mut app = SelectionApp::new(attrs, bg_rgba, bg_w, bg_h, virtual_bounds, monitor_layouts);
+        let mut app =
+            SelectionApp::new(attrs, bg_rgba, bg_w, bg_h, virtual_bounds, monitor_layouts);
 
         // 运行事件循环
         if let Err(e) = event_loop.run_app(&mut app) {
@@ -100,6 +101,12 @@ impl RegionSelector for WinitRegionSelector {
         _display_offset: (i32, i32),
         monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> crate::MaybeRegion {
-        self.run_selector(Some(rgb), width, height, Some(virtual_bounds), monitor_layouts)
+        self.run_selector(
+            Some(rgb),
+            width,
+            height,
+            Some(virtual_bounds),
+            monitor_layouts,
+        )
     }
 }

@@ -479,8 +479,16 @@ impl MacCapturer {
         // 计算物理坐标的虚拟边界
         let physical_min_x = monitor_layouts.iter().map(|m| m.x).min().unwrap_or(0);
         let physical_min_y = monitor_layouts.iter().map(|m| m.y).min().unwrap_or(0);
-        let physical_max_x = monitor_layouts.iter().map(|m| m.x + m.width as i32).max().unwrap_or(0);
-        let physical_max_y = monitor_layouts.iter().map(|m| m.y + m.height as i32).max().unwrap_or(0);
+        let physical_max_x = monitor_layouts
+            .iter()
+            .map(|m| m.x + m.width as i32)
+            .max()
+            .unwrap_or(0);
+        let physical_max_y = monitor_layouts
+            .iter()
+            .map(|m| m.y + m.height as i32)
+            .max()
+            .unwrap_or(0);
         let physical_width = (physical_max_x - physical_min_x) as u32;
         let physical_height = (physical_max_y - physical_min_y) as u32;
 
@@ -508,7 +516,12 @@ impl MacCapturer {
         }
 
         // 构建虚拟桌面信息用于区域选择（物理坐标）
-        let virtual_bounds = (physical_min_x, physical_min_y, physical_width, physical_height);
+        let virtual_bounds = (
+            physical_min_x,
+            physical_min_y,
+            physical_width,
+            physical_height,
+        );
         let display_offset = (0, 0); // 现在使用虚拟桌面坐标，不需要偏移
 
         // 使用支持虚拟桌面的选择方法
@@ -569,7 +582,13 @@ impl MacCapturer {
                 rect.w,
                 rect.h
             );
-            tracing::debug!("  应用scale后物理坐标: ({}, {}, {}, {})", x_virtual, y_virtual, w, h);
+            tracing::debug!(
+                "  应用scale后物理坐标: ({}, {}, {}, {})",
+                x_virtual,
+                y_virtual,
+                w,
+                h
+            );
             tracing::debug!(
                 "  物理虚拟边界: min({}, {}), max({}, {})",
                 physical_min_x,

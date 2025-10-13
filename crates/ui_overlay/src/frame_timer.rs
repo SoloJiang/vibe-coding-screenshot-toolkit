@@ -43,7 +43,6 @@ impl FrameTimer {
             false
         }
     }
-
 }
 
 #[cfg(test)]

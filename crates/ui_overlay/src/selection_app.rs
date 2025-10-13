@@ -123,7 +123,13 @@ impl SelectionApp {
             let (x0, y0, x1, y1) = render_data.selection_rect;
             tracing::debug!(
                 "渲染窗口 {}: virtual_pos({}, {}), 选择框虚拟坐标({}, {}, {}, {})",
-                window_index, window_virtual_x, window_virtual_y, x0, y0, x1, y1
+                window_index,
+                window_virtual_x,
+                window_virtual_y,
+                x0,
+                y0,
+                x1,
+                y1
             );
         }
 
@@ -233,14 +239,16 @@ impl SelectionApp {
         if self.bg_tinted.is_none() {
             if let Some(bg) = &self.bg {
                 if !bg.is_empty() && self.bg_w > 0 && self.bg_h > 0 {
-                    self.bg_tinted = Some(BackgroundProcessor::tint_background(bg, self.overlay_color));
+                    self.bg_tinted =
+                        Some(BackgroundProcessor::tint_background(bg, self.overlay_color));
                 }
             }
         }
 
         // 一次性初始化 Skia Image 缓存
         if let (Some(ref bg), Some(ref bg_tinted)) = (&self.bg, &self.bg_tinted) {
-            self.image_cache.ensure_images_cached(bg, bg_tinted, self.bg_w, self.bg_h);
+            self.image_cache
+                .ensure_images_cached(bg, bg_tinted, self.bg_w, self.bg_h);
         }
     }
 
@@ -407,8 +415,11 @@ impl ApplicationHandler for SelectionApp {
         }
 
         // 使用提供的显示器布局信息（如果有）
-        self.window_manager
-            .initialize_windows_with_layouts(event_loop, &self.attrs, self.monitor_layouts.as_deref());
+        self.window_manager.initialize_windows_with_layouts(
+            event_loop,
+            &self.attrs,
+            self.monitor_layouts.as_deref(),
+        );
 
         // 添加调试信息
         #[cfg(debug_assertions)]
@@ -417,7 +428,12 @@ impl ApplicationHandler for SelectionApp {
             for (i, layout) in layouts.iter().enumerate() {
                 tracing::debug!(
                     "  显示器 {}: 位置({}, {}), 尺寸{}x{}, scale={}",
-                    i, layout.x, layout.y, layout.width, layout.height, layout.scale_factor
+                    i,
+                    layout.x,
+                    layout.y,
+                    layout.width,
+                    layout.height,
+                    layout.scale_factor
                 );
             }
         }
@@ -428,8 +444,12 @@ impl ApplicationHandler for SelectionApp {
             for (i, window_info) in self.window_manager.windows.iter().enumerate() {
                 tracing::debug!(
                     "  窗口 {}: virtual_pos({}, {}), size_px={}x{}, scale={}",
-                    i, window_info.virtual_x, window_info.virtual_y,
-                    window_info.size_px.width, window_info.size_px.height, window_info.scale
+                    i,
+                    window_info.virtual_x,
+                    window_info.virtual_y,
+                    window_info.size_px.width,
+                    window_info.size_px.height,
+                    window_info.scale
                 );
             }
         }
