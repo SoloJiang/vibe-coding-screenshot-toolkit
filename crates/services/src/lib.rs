@@ -1,6 +1,7 @@
 use chrono::Utc;
 use image::GenericImageView;
 use infra::{metrics, start_timer};
+use parking_lot::Mutex;
 use renderer::{ExportEncoder, PngEncoder, Renderer, SimpleRenderer};
 use screenshot_core::{
     naming, undo, Annotation, HistoryItem, Result as CoreResult, Screenshot, UndoContext, UndoStack,
@@ -211,7 +212,7 @@ pub struct ExportService<CP: Clipboard> {
     clipboard: Arc<CP>,
     renderer: SimpleRenderer,
     encoder: PngEncoder,
-    history: Option<Arc<std::sync::Mutex<HistoryService>>>,
+    history: Option<Arc<Mutex<HistoryService>>>,
 }
 impl<CP: Clipboard> ExportService<CP> {
     pub fn new(clipboard: Arc<CP>) -> Self {
@@ -223,7 +224,7 @@ impl<CP: Clipboard> ExportService<CP> {
         }
     }
 
-    pub fn with_history(mut self, history: Arc<std::sync::Mutex<HistoryService>>) -> Self {
+    pub fn with_history(mut self, history: Arc<Mutex<HistoryService>>) -> Self {
         self.history = Some(history);
         self
     }
@@ -294,7 +295,7 @@ impl<CP: Clipboard> ExportService<CP> {
         if let Some(h) = &self.history {
             // 生成缩略图（最长边 240）
             if let Ok(thumb) = self.generate_thumbnail(&bytes) {
-                let mut history_lock = h.lock().unwrap();
+                let mut history_lock = h.lock();
                 let _ = history_lock.append(path.as_ref(), Some(thumb));
             }
         }
@@ -459,13 +460,13 @@ pub struct OcrService {
 impl OcrService {
     pub fn new(worker_threads: usize) -> Self {
         let (tx, rx) = std::sync::mpsc::channel::<OcrRequest>();
-        let shared = std::sync::Arc::new(std::sync::Mutex::new(rx));
+        let shared = std::sync::Arc::new(Mutex::new(rx));
         let threads = worker_threads.max(1);
         for _ in 0..threads {
             let shared_rx = shared.clone();
             std::thread::spawn(move || loop {
                 let msg = {
-                    let guard = shared_rx.lock().unwrap();
+                    let guard = shared_rx.lock();
                     guard.recv()
                 };
                 match msg {
@@ -511,14 +512,19 @@ pub struct PrivacyService {
 }
 impl PrivacyService {
     pub fn new() -> Self {
+        // 这些正则表达式是硬编码的，编译失败表明代码错误，应该 panic
+        // 但使用 expect 提供更好的错误信息
         Self {
             email_re: regex::Regex::new(r#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
-                .unwrap(),
-            phone_re: regex::Regex::new(r#"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b"#).unwrap(),
+                .expect("Invalid email regex pattern"),
+            phone_re: regex::Regex::new(r#"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b"#)
+                .expect("Invalid phone regex pattern"),
             url_re: regex::Regex::new(r#"https?://[A-Za-z0-9._~:/?#%\\\[\\\]@!$&'()*+,;=-]+"#)
-                .unwrap(),
-            ipv4_re: regex::Regex::new(r#"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b"#).unwrap(),
-            cn_mobile_re: regex::Regex::new(r#"\b1[3-9]\d{9}\b"#).unwrap(),
+                .expect("Invalid URL regex pattern"),
+            ipv4_re: regex::Regex::new(r#"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b"#)
+                .expect("Invalid IPv4 regex pattern"),
+            cn_mobile_re: regex::Regex::new(r#"\b1[3-9]\d{9}\b"#)
+                .expect("Invalid CN mobile regex pattern"),
         }
     }
     /// 返回命中区间 (start,end)

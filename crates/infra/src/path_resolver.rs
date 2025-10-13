@@ -10,8 +10,19 @@ pub struct Paths {
 }
 
 pub fn resolve_paths() -> Paths {
-    let proj = ProjectDirs::from("com", "Example", "ScreenshotTool").expect("project dirs");
-    let base = proj.data_dir().to_path_buf();
+    let base = if let Some(proj) = ProjectDirs::from("com", "Example", "ScreenshotTool") {
+        proj.data_dir().to_path_buf()
+    } else {
+        // Fallback: 在无法获取标准路径时使用当前目录下的 .screenshot-tool
+        let fallback = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".screenshot-tool");
+        eprintln!(
+            "Warning: Could not determine system data directory, using fallback: {:?}",
+            fallback
+        );
+        fallback
+    };
     Paths {
         base: base.clone(),
         config: base.join("config.json"),

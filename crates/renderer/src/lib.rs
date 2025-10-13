@@ -476,7 +476,10 @@ fn chaikin(pts: &[(f32, f32)]) -> Vec<(f32, f32)> {
         out.push(q);
         out.push(r);
     }
-    out.push(*pts.last().unwrap());
+    // 安全：前面已检查 pts.len() >= 2，所以 last() 必定有值
+    if let Some(&last_pt) = pts.last() {
+        out.push(last_pt);
+    }
     out
 }
 

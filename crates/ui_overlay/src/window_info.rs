@@ -69,7 +69,10 @@ impl WindowInfo {
 
         self.init_softbuffer()?;
 
-        let surface = self.softbuffer_surface.as_mut().unwrap();
+        let surface = self
+            .softbuffer_surface
+            .as_mut()
+            .ok_or_else(|| "Softbuffer surface not initialized".to_string())?;
 
         if width == 0 || height == 0 {
             return Ok(());

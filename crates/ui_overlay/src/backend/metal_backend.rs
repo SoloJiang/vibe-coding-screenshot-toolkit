@@ -82,7 +82,8 @@ impl MetalBackend {
 
                     // 设置 layer 到 view（使用 objc2-app-kit）
                     let layer_obj = layer.as_ptr() as *mut CALayer;
-                    let layer_retained: Retained<CALayer> = Retained::retain(layer_obj).unwrap();
+                    let layer_retained: Retained<CALayer> = Retained::retain(layer_obj)
+                        .ok_or_else(|| anyhow!("Failed to retain CAMetalLayer"))?;
 
                     view.setWantsLayer(true);
                     view.setLayer(Some(&*layer_retained));

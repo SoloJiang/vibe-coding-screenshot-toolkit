@@ -404,7 +404,7 @@ impl SelectionApp {
             self.window_manager.windows[window_index].scale as f32
         };
 
-        self.state.to_region(scale_out)
+        self.state.build_region(scale_out)
     }
 }
 

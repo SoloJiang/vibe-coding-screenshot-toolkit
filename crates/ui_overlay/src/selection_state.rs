@@ -65,7 +65,12 @@ impl SelectionState {
     /// - Shift + Alt：以起点为中心的正方形
     pub fn calculate_selection_rect(&mut self) -> (f64, f64, f64, f64) {
         if self.cache_valid {
-            return self.cached_rect.unwrap();
+            // 安全：cache_valid 为 true 时 cached_rect 必定有值
+            if let Some(rect) = self.cached_rect {
+                return rect;
+            }
+            // 防御性编程：如果缓存状态不一致，重新计算
+            self.cache_valid = false;
         }
 
         let (sx, sy) = self.start;
@@ -110,8 +115,8 @@ impl SelectionState {
         sx != ex && sy != ey
     }
 
-    /// 将当前选择转换为 Region 对象
-    pub fn to_region(&mut self, scale: f32) -> Option<Region> {
+    /// 构建当前选择的 Region 对象
+    pub fn build_region(&mut self, scale: f32) -> Option<Region> {
         if !self.has_valid_selection() {
             return None;
         }

@@ -476,19 +476,41 @@ impl MacCapturer {
             })
             .collect();
 
-        // 计算物理坐标的虚拟边界
-        let physical_min_x = monitor_layouts.iter().map(|m| m.x).min().unwrap_or(0);
-        let physical_min_y = monitor_layouts.iter().map(|m| m.y).min().unwrap_or(0);
-        let physical_max_x = monitor_layouts
-            .iter()
-            .map(|m| m.x + m.width as i32)
-            .max()
-            .unwrap_or(0);
-        let physical_max_y = monitor_layouts
-            .iter()
-            .map(|m| m.y + m.height as i32)
-            .max()
-            .unwrap_or(0);
+        // 计算物理坐标的虚拟边界（单次遍历优化）
+        let (physical_min_x, physical_min_y, physical_max_x, physical_max_y) =
+            monitor_layouts.iter().fold(
+                (i32::MAX, i32::MAX, i32::MIN, i32::MIN),
+                |(min_x, min_y, max_x, max_y), m| {
+                    (
+                        min_x.min(m.x),
+                        min_y.min(m.y),
+                        max_x.max(m.x + m.width as i32),
+                        max_y.max(m.y + m.height as i32),
+                    )
+                },
+            );
+
+        // 处理空集合情况（理论上不应发生，但保持健壮性）
+        let physical_min_x = if physical_min_x == i32::MAX {
+            0
+        } else {
+            physical_min_x
+        };
+        let physical_min_y = if physical_min_y == i32::MAX {
+            0
+        } else {
+            physical_min_y
+        };
+        let physical_max_x = if physical_max_x == i32::MIN {
+            0
+        } else {
+            physical_max_x
+        };
+        let physical_max_y = if physical_max_y == i32::MIN {
+            0
+        } else {
+            physical_max_y
+        };
         let physical_width = (physical_max_x - physical_min_x) as u32;
         let physical_height = (physical_max_y - physical_min_y) as u32;
 

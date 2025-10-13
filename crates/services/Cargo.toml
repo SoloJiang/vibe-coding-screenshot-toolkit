@@ -15,6 +15,7 @@ serde_json = "1"
 image = { version = "0.25", default-features = false, features=["png","jpeg"] }
 png = "0.17"
 regex = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

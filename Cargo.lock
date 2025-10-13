@@ -3428,6 +3428,7 @@ dependencies = [
  "chrono",
  "image 0.25.8",
  "infra",
+ "parking_lot",
  "png 0.17.16",
  "regex",
  "renderer",

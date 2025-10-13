@@ -1,5 +1,6 @@
 use chrono::Utc;
 use infra::metrics;
+use parking_lot::Mutex;
 use screenshot_core::{
     Annotation, AnnotationKind, AnnotationMeta, Frame, FrameSet, PixelFormat, Screenshot,
 };
@@ -40,16 +41,14 @@ fn test_naming_seq_increase_same_day() {
 #[test]
 fn test_history_trim_and_thumbnail() {
     let tmp = tempfile::tempdir().unwrap();
-    let history = Arc::new(std::sync::Mutex::new(
-        HistoryService::new(tmp.path(), 5).unwrap(),
-    ));
+    let history = Arc::new(Mutex::new(HistoryService::new(tmp.path(), 5).unwrap()));
     let export = ExportService::new(Arc::new(StubClipboard)).with_history(history.clone());
     let shot = make_mock_screenshot(400, 300);
     for _ in 0..7 {
         let path = tmp.path().join(format!("{}.png", Uuid::now_v7()));
         export.export_png_to_file(&shot, &[], &path).unwrap();
     }
-    let h = history.lock().unwrap();
+    let h = history.lock();
     assert_eq!(h.list().len(), 5, "history trimmed to capacity");
     assert!(h
         .list()

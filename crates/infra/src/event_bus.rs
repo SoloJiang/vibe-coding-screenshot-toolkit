@@ -1,6 +1,6 @@
+use parking_lot::RwLock;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 type Handler = Box<dyn Fn(&dyn Any) + Send + Sync>;
 
@@ -19,7 +19,7 @@ impl EventBus {
         &self,
         handler: impl Fn(&E) + Send + Sync + 'static,
     ) {
-        let mut map = self.inner.write().unwrap();
+        let mut map = self.inner.write();
         map.entry(TypeId::of::<E>())
             .or_default()
             .push(Box::new(move |any| {
@@ -30,7 +30,7 @@ impl EventBus {
     }
 
     pub fn publish<E: 'static + Send + Sync>(&self, event: E) {
-        if let Some(list) = self.inner.read().unwrap().get(&TypeId::of::<E>()) {
+        if let Some(list) = self.inner.read().get(&TypeId::of::<E>()) {
             for h in list {
                 h(&event);
             }
