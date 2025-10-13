@@ -8,6 +8,7 @@ clap = { version = "4", features=["derive"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = { workspace = true }
+tokio = { workspace = true }
 screenshot_core = { path = "../core" }
 services = { path = "../services" }
 renderer = { path = "../renderer" }

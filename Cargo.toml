@@ -25,7 +25,8 @@ license = "MIT"
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 uuid = { version = "1", features = ["v7", "serde"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "fs", "sync"] }
+rayon = "1.10"
 thiserror = "1"
 anyhow = "1"
 parking_lot = "0.12"

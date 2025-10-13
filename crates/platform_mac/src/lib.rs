@@ -290,8 +290,11 @@ impl MacCapturer {
     /// 多显示器截图：捕获所有显示器并合成为虚拟桌面
     ///
     /// 注意：返回的截图使用物理像素坐标系统
+    /// 性能优化：使用 rayon 并行捕获多个显示器
     pub fn capture_all() -> Result<Screenshot> {
         use infra::metrics;
+        use rayon::prelude::*;
+
         let timer = metrics::start_timer(
             "capture_all_duration_us",
             &[5000, 10000, 50000, 100000, 500000],
@@ -301,35 +304,41 @@ impl MacCapturer {
         // 获取虚拟桌面信息
         let virtual_desktop = VirtualDesktop::detect().context("检测虚拟桌面失败")?;
 
-        // 计算物理坐标的虚拟边界
-        // xcap 返回的图像是物理像素，所以我们需要用物理坐标来布局
-        let mut physical_min_x = i32::MAX;
-        let mut physical_min_y = i32::MAX;
-        let mut physical_max_x = i32::MIN;
-        let mut physical_max_y = i32::MIN;
-
         // 先遍历一次计算物理边界
         let monitors = xcap::Monitor::all().context("列出显示器失败")?;
-        for monitor in &monitors {
-            let monitor_id = monitor.id().unwrap_or(0);
-            let display_info = virtual_desktop
-                .displays
-                .iter()
-                .find(|d| d.id == monitor_id)
-                .context("未找到对应的显示器信息")?;
 
-            // 将逻辑坐标转换为物理坐标
-            let scale = display_info.scale_factor;
-            let phys_x = (display_info.x as f64 * scale).round() as i32;
-            let phys_y = (display_info.y as f64 * scale).round() as i32;
-            let phys_width = (display_info.width as f64 * scale).round() as i32;
-            let phys_height = (display_info.height as f64 * scale).round() as i32;
+        // 并行计算物理边界（使用 rayon）
+        let physical_bounds = monitors
+            .par_iter()
+            .filter_map(|monitor| {
+                let monitor_id = monitor.id().ok()?;
+                let display_info = virtual_desktop
+                    .displays
+                    .iter()
+                    .find(|d| d.id == monitor_id)?;
 
-            physical_min_x = physical_min_x.min(phys_x);
-            physical_min_y = physical_min_y.min(phys_y);
-            physical_max_x = physical_max_x.max(phys_x + phys_width);
-            physical_max_y = physical_max_y.max(phys_y + phys_height);
-        }
+                // 将逻辑坐标转换为物理坐标
+                let scale = display_info.scale_factor;
+                let phys_x = (display_info.x as f64 * scale).round() as i32;
+                let phys_y = (display_info.y as f64 * scale).round() as i32;
+                let phys_width = (display_info.width as f64 * scale).round() as i32;
+                let phys_height = (display_info.height as f64 * scale).round() as i32;
+
+                Some((phys_x, phys_y, phys_x + phys_width, phys_y + phys_height))
+            })
+            .reduce(
+                || (i32::MAX, i32::MAX, i32::MIN, i32::MIN),
+                |(min_x1, min_y1, max_x1, max_y1), (min_x2, min_y2, max_x2, max_y2)| {
+                    (
+                        min_x1.min(min_x2),
+                        min_y1.min(min_y2),
+                        max_x1.max(max_x2),
+                        max_y1.max(max_y2),
+                    )
+                },
+            );
+
+        let (physical_min_x, physical_min_y, physical_max_x, physical_max_y) = physical_bounds;
 
         // 创建物理坐标的虚拟桌面画布
         let canvas_width = (physical_max_x - physical_min_x) as u32;
@@ -345,42 +354,44 @@ impl MacCapturer {
             canvas_height
         );
 
-        // 捕获每个显示器并合成到虚拟桌面（使用物理坐标）
-        for monitor in monitors {
-            let monitor_id = monitor.id().unwrap_or(0);
-            let display_info = virtual_desktop
-                .displays
-                .iter()
-                .find(|d| d.id == monitor_id)
-                .context("未找到对应的显示器信息")?;
+        // 并行捕获所有显示器（使用 rayon）
+        let captured_monitors: Vec<_> = monitors.par_iter()
+            .filter_map(|monitor| {
+                let monitor_id = monitor.id().ok()?;
+                let display_info = virtual_desktop.displays.iter().find(|d| d.id == monitor_id)?;
 
-            // 捕获当前显示器
-            let img = monitor.capture_image().context("xcap 显示器图像捕获失败")?;
-            let (mon_width, mon_height) = (img.width(), img.height());
-            let rgba_data = img.into_raw();
+                // 捕获当前显示器
+                let img = monitor.capture_image().ok()?;
+                let (mon_width, mon_height) = (img.width(), img.height());
+                let rgba_data = img.into_raw();
 
-            // 计算在虚拟桌面画布中的位置（物理坐标）
-            let scale = display_info.scale_factor;
-            let phys_x = (display_info.x as f64 * scale).round() as i32;
-            let phys_y = (display_info.y as f64 * scale).round() as i32;
-            let canvas_x = (phys_x - physical_min_x) as u32;
-            let canvas_y = (phys_y - physical_min_y) as u32;
+                // 计算在虚拟桌面画布中的位置（物理坐标）
+                let scale = display_info.scale_factor;
+                let phys_x = (display_info.x as f64 * scale).round() as i32;
+                let phys_y = (display_info.y as f64 * scale).round() as i32;
+                let canvas_x = (phys_x - physical_min_x) as u32;
+                let canvas_y = (phys_y - physical_min_y) as u32;
 
-            #[cfg(debug_assertions)]
-            tracing::debug!(
-                "显示器合成 [物理坐标]: 显示器{} 逻辑({},{}) -> 物理({},{}) -> canvas({},{}) 尺寸{}x{}",
-                monitor_id,
-                display_info.x,
-                display_info.y,
-                phys_x,
-                phys_y,
-                canvas_x,
-                canvas_y,
-                mon_width,
-                mon_height
-            );
+                #[cfg(debug_assertions)]
+                tracing::debug!(
+                    "显示器合成 [物理坐标]: 显示器{} 逻辑({},{}) -> 物理({},{}) -> canvas({},{}) 尺寸{}x{}",
+                    monitor_id,
+                    display_info.x,
+                    display_info.y,
+                    phys_x,
+                    phys_y,
+                    canvas_x,
+                    canvas_y,
+                    mon_width,
+                    mon_height
+                );
 
-            // 将显示器图像复制到虚拟桌面画布
+                Some((rgba_data, mon_width, mon_height, canvas_x, canvas_y))
+            })
+            .collect();
+
+        // 串行合成到画布（避免数据竞争）
+        for (rgba_data, mon_width, mon_height, canvas_x, canvas_y) in captured_monitors {
             for row in 0..mon_height {
                 if canvas_y + row >= canvas_height {
                     break;

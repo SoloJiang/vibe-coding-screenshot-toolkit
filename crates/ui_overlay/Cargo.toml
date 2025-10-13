@@ -10,6 +10,8 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 parking_lot = { workspace = true }
+tokio = { workspace = true }
+rayon = { workspace = true }
 winit = "0.30"
 image = { workspace = true }
 softbuffer = "0.4.6"
