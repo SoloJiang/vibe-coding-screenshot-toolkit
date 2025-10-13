@@ -66,6 +66,7 @@ pub trait RegionSelector {
     /// 新增：支持虚拟桌面背景的区域选择
     /// virtual_bounds: 虚拟桌面的边界信息 (min_x, min_y, width, height)
     /// display_offset: 当前交互显示器在虚拟桌面中的偏移 (x, y)
+    /// monitor_layouts: 所有显示器的布局信息（用于 UI overlay 创建窗口）
     /// 返回的Region坐标是相对于虚拟桌面的全局坐标
     fn select_with_virtual_background(
         &self,
@@ -74,11 +75,22 @@ pub trait RegionSelector {
         _height: u32,
         _virtual_bounds: (i32, i32, u32, u32), // (min_x, min_y, width, height)
         _display_offset: (i32, i32),           // (x, y)
+        _monitor_layouts: Option<&[MonitorLayout]>, // 显示器布局信息
     ) -> MaybeRegion {
         // 默认实现：对于虚拟桌面模式，直接使用虚拟桌面背景
         // 坐标不需要转换，因为背景就是完整的虚拟桌面
         self.select_with_background(_rgb, _width, _height)
     }
+}
+
+/// 显示器布局信息（用于 UI overlay）
+#[derive(Debug, Clone, Copy)]
+pub struct MonitorLayout {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale_factor: f64,
 }
 
 /// 一个 mock：立即返回给定区域；用于非图形环境测试

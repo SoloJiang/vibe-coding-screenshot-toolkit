@@ -1,6 +1,7 @@
 use chrono::Utc;
 use image::GenericImageView;
 use infra::{metrics, start_timer};
+use parking_lot::Mutex;
 use renderer::{ExportEncoder, PngEncoder, Renderer, SimpleRenderer};
 use screenshot_core::{
     naming, undo, Annotation, HistoryItem, Result as CoreResult, Screenshot, UndoContext, UndoStack,
@@ -211,7 +212,19 @@ pub struct ExportService<CP: Clipboard> {
     clipboard: Arc<CP>,
     renderer: SimpleRenderer,
     encoder: PngEncoder,
-    history: Option<Arc<std::sync::Mutex<HistoryService>>>,
+    history: Option<Arc<Mutex<HistoryService>>>,
+}
+
+// 手动实现Clone
+impl<CP: Clipboard> Clone for ExportService<CP> {
+    fn clone(&self) -> Self {
+        Self {
+            clipboard: self.clipboard.clone(),
+            renderer: SimpleRenderer, // SimpleRenderer是零大小类型，直接创建新实例
+            encoder: PngEncoder,      // PngEncoder是零大小类型，直接创建新实例
+            history: self.history.clone(),
+        }
+    }
 }
 impl<CP: Clipboard> ExportService<CP> {
     pub fn new(clipboard: Arc<CP>) -> Self {
@@ -223,7 +236,7 @@ impl<CP: Clipboard> ExportService<CP> {
         }
     }
 
-    pub fn with_history(mut self, history: Arc<std::sync::Mutex<HistoryService>>) -> Self {
+    pub fn with_history(mut self, history: Arc<Mutex<HistoryService>>) -> Self {
         self.history = Some(history);
         self
     }
@@ -277,6 +290,9 @@ impl<CP: Clipboard> ExportService<CP> {
         }
     }
 
+    /// 导出PNG到文件（同步版本）
+    ///
+    /// 注意：这个方法会阻塞当前线程。如果在异步上下文中，建议使用 `export_png_to_file_async`
     pub fn export_png_to_file<P: AsRef<Path>>(
         &self,
         screenshot: &Screenshot,
@@ -294,10 +310,47 @@ impl<CP: Clipboard> ExportService<CP> {
         if let Some(h) = &self.history {
             // 生成缩略图（最长边 240）
             if let Ok(thumb) = self.generate_thumbnail(&bytes) {
-                let mut history_lock = h.lock().unwrap();
+                let mut history_lock = h.lock();
                 let _ = history_lock.append(path.as_ref(), Some(thumb));
             }
         }
+        Ok(())
+    }
+
+    /// 导出PNG到文件（异步版本）
+    ///
+    /// 性能优化：
+    /// - 文件写入使用 tokio 异步I/O
+    /// - 缩略图生成在 spawn_blocking 中执行
+    pub async fn export_png_to_file_async<P: AsRef<Path> + Send>(
+        &self,
+        screenshot: &Screenshot,
+        annotations: &[Annotation],
+        path: P,
+    ) -> anyhow::Result<()> {
+        // 在当前线程渲染（CPU密集）
+        let bytes = self.render_png_bytes(screenshot, annotations)?;
+
+        // 异步写入文件
+        let path_ref = path.as_ref();
+        tokio::fs::write(path_ref, &bytes).await?;
+        metrics::counter("export_png_file_ok").inc();
+
+        // 异步处理历史记录和缩略图
+        if let Some(h) = &self.history {
+            let path_buf = path_ref.to_path_buf();
+            let bytes_clone = bytes.clone();
+            let history = h.clone();
+
+            // 在后台线程生成缩略图并更新历史
+            tokio::task::spawn_blocking(move || {
+                if let Ok(thumb) = Self::generate_thumbnail_static(&bytes_clone) {
+                    let mut history_lock = history.lock();
+                    let _ = history_lock.append(&path_buf, Some(thumb));
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -340,6 +393,11 @@ impl<CP: Clipboard> ExportService<CP> {
 
 impl<CP: Clipboard> ExportService<CP> {
     fn generate_thumbnail(&self, png_bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+        Self::generate_thumbnail_static(png_bytes)
+    }
+
+    /// 生成缩略图（静态方法，可在异步任务中使用）
+    fn generate_thumbnail_static(png_bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
         let img = image::load_from_memory(png_bytes)?;
         let (w, h) = img.dimensions();
         let max_side = THUMBNAIL_MAX_SIZE;
@@ -381,6 +439,7 @@ impl HistoryService {
         })
     }
 
+    /// 从磁盘加载历史记录（同步版本）
     pub fn load_from_disk(&mut self) -> anyhow::Result<()> {
         let index = self.base_dir.join("history.jsonl");
         if !index.exists() {
@@ -407,6 +466,53 @@ impl HistoryService {
             self.items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
             self.items.truncate(self.capacity);
         }
+        Ok(())
+    }
+
+    /// 从磁盘加载历史记录（异步版本）
+    ///
+    /// 性能优化：
+    /// - 文件读取使用 tokio 异步I/O
+    /// - JSON解析在 spawn_blocking 中执行
+    pub async fn load_from_disk_async(&mut self) -> anyhow::Result<()> {
+        let index = self.base_dir.join("history.jsonl");
+        if !tokio::fs::try_exists(&index).await? {
+            return Ok(());
+        }
+
+        // 异步读取文件
+        let text = tokio::fs::read_to_string(&index).await?;
+        let capacity = self.capacity;
+
+        // 在 blocking pool 中解析 JSON（CPU密集）
+        let items = tokio::task::spawn_blocking(move || {
+            let mut items = Vec::new();
+            for line in text.lines() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                match serde_json::from_str::<HistoryItem>(line) {
+                    Ok(mut item) => {
+                        if item.version == 0 {
+                            item.version = 1;
+                        }
+                        items.push(item);
+                    }
+                    Err(_e) => { /* ignore broken line */ }
+                }
+            }
+
+            // 裁剪
+            if items.len() > capacity {
+                items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                items.truncate(capacity);
+            }
+
+            items
+        })
+        .await?;
+
+        self.items = items;
         Ok(())
     }
 
@@ -448,48 +554,89 @@ pub struct OcrRequest {
     /// 图像的 PNG 字节
     pub image_bytes: Vec<u8>,
     /// 用于回传 OCR 结果的通道
-    pub response_tx: std::sync::mpsc::Sender<CoreResult<Vec<String>>>,
+    pub response_tx: tokio::sync::oneshot::Sender<CoreResult<Vec<String>>>,
 }
 
-/// 占位：OCR 服务（后续实现线程池 + tesseract 适配器）
+/// OCR 服务（使用 tokio 异步模型）
+///
+/// 性能优化：
+/// - 使用 tokio channel 替代 std::mpsc
+/// - 使用 tokio task 替代 std::thread
+/// - 保留并行处理能力
 pub struct OcrService {
-    // 简单线程执行器 (占位)：mpsc 任务队列 + 工作线程
-    tx: std::sync::mpsc::Sender<OcrRequest>,
+    tx: tokio::sync::mpsc::UnboundedSender<OcrRequest>,
 }
+
 impl OcrService {
+    /// 创建新的OCR服务
+    ///
+    /// worker_threads: 并发处理的任务数（使用tokio任务，而非OS线程）
     pub fn new(worker_threads: usize) -> Self {
-        let (tx, rx) = std::sync::mpsc::channel::<OcrRequest>();
-        let shared = std::sync::Arc::new(std::sync::Mutex::new(rx));
-        let threads = worker_threads.max(1);
-        for _ in 0..threads {
-            let shared_rx = shared.clone();
-            std::thread::spawn(move || loop {
-                let msg = {
-                    let guard = shared_rx.lock().unwrap();
-                    guard.recv()
-                };
-                match msg {
-                    Ok(OcrRequest {
-                        image_bytes,
-                        response_tx,
-                    }) => {
-                        let _ = response_tx.send(Err(screenshot_core::Error::new(
-                            screenshot_core::ErrorKind::Unsupported,
-                            format!("ocr not implemented ({} bytes)", image_bytes.len()),
-                        )));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<OcrRequest>();
+        let workers = worker_threads.max(1);
+
+        // 使用Arc<Mutex>共享接收端
+        let rx_shared = Arc::new(tokio::sync::Mutex::new(rx));
+
+        // 启动worker任务池
+        for _worker_id in 0..workers {
+            let rx_clone = rx_shared.clone();
+            tokio::spawn(async move {
+                #[cfg(debug_assertions)]
+                tracing::debug!("OCR worker {} 启动", _worker_id);
+
+                loop {
+                    let msg = {
+                        let mut rx_guard = rx_clone.lock().await;
+                        rx_guard.recv().await
+                    };
+
+                    match msg {
+                        Some(OcrRequest {
+                            image_bytes,
+                            response_tx,
+                        }) => {
+                            // 在 blocking pool 中执行CPU密集型OCR操作
+                            let result = tokio::task::spawn_blocking(move || {
+                                // 占位实现：返回未实现错误
+                                Err(screenshot_core::Error::new(
+                                    screenshot_core::ErrorKind::Unsupported,
+                                    format!("ocr not implemented ({} bytes)", image_bytes.len()),
+                                ))
+                            })
+                            .await;
+
+                            let ocr_result = match result {
+                                Ok(r) => r,
+                                Err(e) => Err(screenshot_core::Error::new(
+                                    screenshot_core::ErrorKind::Unknown,
+                                    format!("OCR task failed: {}", e),
+                                )),
+                            };
+
+                            // 忽略发送失败（接收方可能已关闭）
+                            let _ = response_tx.send(ocr_result);
+                        }
+                        None => break,
                     }
-                    Err(_) => break,
                 }
+
+                #[cfg(debug_assertions)]
+                tracing::debug!("OCR worker {} 停止", _worker_id);
             });
         }
+
         Self { tx }
     }
 
-    pub fn recognize_async(
+    /// 异步识别图像中的文本
+    ///
+    /// 返回 oneshot receiver 用于接收OCR结果
+    pub async fn recognize_async(
         &self,
         bytes: Vec<u8>,
-    ) -> CoreResult<std::sync::mpsc::Receiver<CoreResult<Vec<String>>>> {
-        let (response_tx, rrx) = std::sync::mpsc::channel();
+    ) -> CoreResult<tokio::sync::oneshot::Receiver<CoreResult<Vec<String>>>> {
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         let req = OcrRequest {
             image_bytes: bytes,
             response_tx,
@@ -497,7 +644,7 @@ impl OcrService {
         self.tx.send(req).map_err(|e| {
             screenshot_core::Error::new(screenshot_core::ErrorKind::Unknown, e.to_string())
         })?;
-        Ok(rrx)
+        Ok(response_rx)
     }
 }
 
@@ -511,14 +658,19 @@ pub struct PrivacyService {
 }
 impl PrivacyService {
     pub fn new() -> Self {
+        // 这些正则表达式是硬编码的，编译失败表明代码错误，应该 panic
+        // 但使用 expect 提供更好的错误信息
         Self {
             email_re: regex::Regex::new(r#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
-                .unwrap(),
-            phone_re: regex::Regex::new(r#"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b"#).unwrap(),
+                .expect("Invalid email regex pattern"),
+            phone_re: regex::Regex::new(r#"\b\d{3}[- ]?\d{3,4}[- ]?\d{4}\b"#)
+                .expect("Invalid phone regex pattern"),
             url_re: regex::Regex::new(r#"https?://[A-Za-z0-9._~:/?#%\\\[\\\]@!$&'()*+,;=-]+"#)
-                .unwrap(),
-            ipv4_re: regex::Regex::new(r#"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b"#).unwrap(),
-            cn_mobile_re: regex::Regex::new(r#"\b1[3-9]\d{9}\b"#).unwrap(),
+                .expect("Invalid URL regex pattern"),
+            ipv4_re: regex::Regex::new(r#"\b((?:[0-9]{1,3}\.){3}[0-9]{1,3})\b"#)
+                .expect("Invalid IPv4 regex pattern"),
+            cn_mobile_re: regex::Regex::new(r#"\b1[3-9]\d{9}\b"#)
+                .expect("Invalid CN mobile regex pattern"),
         }
     }
     /// 返回命中区间 (start,end)

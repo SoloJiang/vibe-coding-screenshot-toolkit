@@ -2,7 +2,6 @@
 ///
 /// 使用 metal-rs + Skia Metal backend 实现 GPU 加速渲染
 use anyhow::{anyhow, Result};
-use cocoa::base::id as cocoa_id;
 use core_graphics_types::geometry::CGSize;
 use metal::foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{CommandQueue, Device, MTLPixelFormat, MetalDrawable, MetalLayer};
@@ -55,7 +54,12 @@ impl MetalBackend {
 
             match window_handle.as_raw() {
                 RawWindowHandle::AppKit(handle) => {
-                    let view = handle.ns_view.as_ptr() as cocoa_id;
+                    use objc2::rc::Retained;
+                    use objc2_app_kit::NSView;
+                    use objc2_quartz_core::CALayer;
+
+                    let view_ptr = handle.ns_view.as_ptr() as *mut NSView;
+                    let view = &*view_ptr;
 
                     // 创建 CAMetalLayer
                     let layer = MetalLayer::new();
@@ -66,12 +70,23 @@ impl MetalBackend {
                     // 设置 layer 尺寸
                     layer.set_drawable_size(CGSize::new(width as f64, height as f64));
 
-                    // 设置 layer 到 view（使用 cocoa crate 避免 objc2 版本冲突）
-                    use cocoa::base::YES;
+                    // 设置 layer 为透明，避免粉色调试背景
+                    // 注意：CAMetalLayer 默认就是透明的，但我们明确设置以确保
+                    layer.set_opaque(false);
 
-                    let _: () = cocoa::appkit::NSView::setWantsLayer(view, YES);
-                    let layer_obj = layer.as_ptr() as cocoa_id;
-                    let _: () = cocoa::appkit::NSView::setLayer(view, layer_obj);
+                    // 启用 VSync 显示同步，避免画面撕裂和闪烁
+                    layer.set_display_sync_enabled(true);
+
+                    // 设置最大可绘制数为 2（双缓冲），减少闪烁
+                    layer.set_maximum_drawable_count(2);
+
+                    // 设置 layer 到 view（使用 objc2-app-kit）
+                    let layer_obj = layer.as_ptr() as *mut CALayer;
+                    let layer_retained: Retained<CALayer> = Retained::retain(layer_obj)
+                        .ok_or_else(|| anyhow!("Failed to retain CAMetalLayer"))?;
+
+                    view.setWantsLayer(true);
+                    view.setLayer(Some(&*layer_retained));
 
                     layer
                 }
@@ -163,15 +178,19 @@ impl RenderBackend for MetalBackend {
     }
 
     fn flush_and_read_pixels(&mut self) -> Result<Vec<u8>> {
-        // 1. Flush GPU commands to Metal
+        // 1. Flush Skia GPU commands to Metal
         self.direct_context.flush_and_submit();
 
-        // 2. Present drawable to screen
+        // 2. Present drawable to screen（通过 command buffer 实现 VSync）
         if let Some(drawable) = self.current_drawable.take() {
-            drawable.present();
+            // 使用 command buffer 的 present 方法，遵循 display_sync_enabled 设置
+            let command_buffer = self.queue.new_command_buffer();
+            command_buffer.present_drawable(&drawable);
+            command_buffer.commit();
+            // 异步提交，不等待完成，让 GPU 并行处理以提升性能
         }
 
-        // 3. GPU backend 不需要返回像素数据
+        // 3. GPU backend 直接渲染到屏幕，无需返回像素数据
         Ok(Vec::new())
     }
 

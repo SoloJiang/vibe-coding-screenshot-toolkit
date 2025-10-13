@@ -20,7 +20,13 @@ impl WinitRegionSelector {
     }
 
     /// 高效的RGB到RGBA转换，复用缓冲区
+    ///
+    /// 性能优化：使用 rayon 并行处理转换
+    /// - 小图像（< 512KB RGB）使用单线程
+    /// - 大图像使用多线程并行处理
     fn convert_rgb_to_rgba(&self, rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
+        use rayon::prelude::*;
+
         let required_size = (width as usize) * (height as usize) * 4;
         let mut buffer = self.rgba_buffer.lock();
 
@@ -29,15 +35,33 @@ impl WinitRegionSelector {
             buffer.resize(required_size, 0);
         }
 
-        // 就地转换，复用现有内存
-        for (i, chunk) in rgb.chunks_exact(3).enumerate() {
-            let base = i * 4;
-            if base + 3 < buffer.len() {
-                buffer[base] = chunk[0];
-                buffer[base + 1] = chunk[1];
-                buffer[base + 2] = chunk[2];
-                buffer[base + 3] = 255;
+        // 对于小图像，使用单线程避免并行开销
+        const PARALLEL_THRESHOLD: usize = 512 * 1024; // 512KB RGB data
+
+        if rgb.len() < PARALLEL_THRESHOLD {
+            // 单线程处理小图像
+            for (i, chunk) in rgb.chunks_exact(3).enumerate() {
+                let base = i * 4;
+                if base + 3 < buffer.len() {
+                    buffer[base] = chunk[0];
+                    buffer[base + 1] = chunk[1];
+                    buffer[base + 2] = chunk[2];
+                    buffer[base + 3] = 255;
+                }
             }
+        } else {
+            // 并行处理大图像
+            // 使用 par_chunks_exact 并行迭代 RGB 数据
+            let buffer_slice = &mut buffer[..required_size];
+            buffer_slice
+                .par_chunks_exact_mut(4)
+                .zip(rgb.par_chunks_exact(3))
+                .for_each(|(dst, src)| {
+                    dst[0] = src[0];
+                    dst[1] = src[1];
+                    dst[2] = src[2];
+                    dst[3] = 255;
+                });
         }
 
         // 返回所需大小的切片副本
@@ -50,6 +74,7 @@ impl WinitRegionSelector {
         bg_w: u32,
         bg_h: u32,
         virtual_bounds: Option<(i32, i32, u32, u32)>,
+        monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> crate::MaybeRegion {
         // 转换背景数据
         let bg_rgba: Option<Vec<u8>> = bg_rgb.map(|rgb| self.convert_rgb_to_rgba(rgb, bg_w, bg_h));
@@ -67,7 +92,8 @@ impl WinitRegionSelector {
             .with_visible(false);
 
         // 创建应用程序
-        let mut app = SelectionApp::new(attrs, bg_rgba, bg_w, bg_h, virtual_bounds);
+        let mut app =
+            SelectionApp::new(attrs, bg_rgba, bg_w, bg_h, virtual_bounds, monitor_layouts);
 
         // 运行事件循环
         if let Err(e) = event_loop.run_app(&mut app) {
@@ -80,14 +106,14 @@ impl WinitRegionSelector {
 
 impl RegionSelector for WinitRegionSelector {
     fn select(&self) -> OverlayResult<Region> {
-        match self.run_selector(None, 0, 0, None)? {
+        match self.run_selector(None, 0, 0, None, None)? {
             Some(r) => Ok(r),
             None => Err(OverlayError::Cancelled),
         }
     }
 
     fn select_with_background(&self, rgb: &[u8], width: u32, height: u32) -> crate::MaybeRegion {
-        self.run_selector(Some(rgb), width, height, None)
+        self.run_selector(Some(rgb), width, height, None, None)
     }
 
     fn select_with_virtual_background(
@@ -97,7 +123,14 @@ impl RegionSelector for WinitRegionSelector {
         height: u32,
         virtual_bounds: (i32, i32, u32, u32),
         _display_offset: (i32, i32),
+        monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> crate::MaybeRegion {
-        self.run_selector(Some(rgb), width, height, Some(virtual_bounds))
+        self.run_selector(
+            Some(rgb),
+            width,
+            height,
+            Some(virtual_bounds),
+            monitor_layouts,
+        )
     }
 }

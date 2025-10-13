@@ -29,7 +29,7 @@ impl EventHandler {
                 let was_pressed = state.shift_down;
                 state.shift_down = key_state == ElementState::Pressed;
                 if was_pressed != state.shift_down {
-                    state.force_next_redraw();
+                    state.invalidate_cache(); // 修饰键变化使缓存失效
                 }
                 EventResult::Continue(true)
             }
@@ -37,24 +37,28 @@ impl EventHandler {
                 let was_pressed = state.alt_down;
                 state.alt_down = key_state == ElementState::Pressed;
                 if was_pressed != state.alt_down {
-                    state.force_next_redraw();
+                    state.invalidate_cache(); // 修饰键变化使缓存失效
                 }
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::ArrowLeft) if key_state == ElementState::Pressed => {
                 state.curr.0 -= 1.0;
+                state.invalidate_cache();
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::ArrowRight) if key_state == ElementState::Pressed => {
                 state.curr.0 += 1.0;
+                state.invalidate_cache();
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::ArrowUp) if key_state == ElementState::Pressed => {
                 state.curr.1 -= 1.0;
+                state.invalidate_cache();
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::ArrowDown) if key_state == ElementState::Pressed => {
                 state.curr.1 += 1.0;
+                state.invalidate_cache();
                 EventResult::Continue(true)
             }
             Key::Named(NamedKey::Enter) if key_state == ElementState::Pressed => {
@@ -68,37 +72,25 @@ impl EventHandler {
         }
     }
 
-    /// 智能鼠标移动事件处理
+    /// 处理鼠标移动事件（带防抖优化）
+    ///
+    /// 使用固定阈值减少计算开销和重绘频率：
+    /// - 拖动时：5px 阈值，保证流畅度
+    /// - 非拖动时：10px 阈值，减少无效重绘
     pub fn handle_cursor_moved(state: &mut SelectionState, new_pos: (f64, f64)) -> bool {
         let distance = ((new_pos.0 - state.last_cursor_pos.0).powi(2)
             + (new_pos.1 - state.last_cursor_pos.1).powi(2))
         .sqrt();
 
-        // 动态阈值：根据当前选择区域大小调整移动敏感度
-        // 增加阈值以减少重绘频率，提升性能
-        let current_area = {
-            let (x0, y0, x1, y1) = state.calculate_selection_rect();
-            (x1 - x0).abs() * (y1 - y0).abs()
-        };
+        let threshold = if state.dragging { 5.0 } else { 10.0 };
 
-        let threshold = if current_area > 50000.0 {
-            8.0 // 大选择框：更大阈值
-        } else if current_area > 10000.0 {
-            5.0 // 中等选择框
-        } else if state.dragging {
-            3.0 // 拖动时
-        } else {
-            4.0 // 默认
-        };
-
-        if distance > threshold || !state.dragging {
+        if distance > threshold {
             state.curr = new_pos;
             state.last_cursor_pos = new_pos;
+            state.invalidate_cache();
 
-            // 只有在拖拽或选择状态改变时才重绘
-            if state.dragging || state.alt_down {
-                return true;
-            }
+            // 只在拖动时触发重绘
+            return state.dragging;
         }
 
         false
@@ -114,6 +106,7 @@ impl EventHandler {
             (MouseButton::Left, ElementState::Pressed) => {
                 state.dragging = true;
                 state.start = state.curr;
+                state.invalidate_cache(); // 开始拖动时使缓存失效
                 EventResult::Continue(true)
             }
             (MouseButton::Left, ElementState::Released) => {
@@ -148,7 +141,7 @@ impl EventHandler {
 
     /// 检查选择区域是否与窗口有交集
     pub fn selection_intersects_window(
-        state: &SelectionState,
+        state: &mut SelectionState,
         window_virtual_x: i32,
         window_virtual_y: i32,
         window_width: u32,

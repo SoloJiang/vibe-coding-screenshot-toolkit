@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
+use parking_lot::RwLock;
 use regex::Regex;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::RwLock;
 
 static SEQ_DAY: RwLock<Option<String>> = RwLock::new(None);
 static SEQ_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -9,7 +9,7 @@ static SEQ_COUNTER: AtomicU32 = AtomicU32::new(0);
 /// 重置当天序列（测试或跨日检测时调用）
 pub fn reset_sequence_for(date: &str) {
     {
-        let mut guard = SEQ_DAY.write().unwrap();
+        let mut guard = SEQ_DAY.write();
         *guard = Some(date.to_string());
     }
     SEQ_COUNTER.store(0, Ordering::Relaxed);
@@ -19,14 +19,14 @@ pub fn next_seq(now: DateTime<Utc>) -> u32 {
     let day_key = now.format("%Y%m%d").to_string();
     let mut need_reset = false;
     {
-        let guard = SEQ_DAY.read().unwrap();
+        let guard = SEQ_DAY.read();
         match guard.as_ref() {
             Some(d) if d == &day_key => {}
             _ => need_reset = true,
         }
     }
     if need_reset {
-        let mut guard = SEQ_DAY.write().unwrap();
+        let mut guard = SEQ_DAY.write();
         *guard = Some(day_key);
         SEQ_COUNTER.store(0, Ordering::Relaxed);
     }
@@ -34,10 +34,10 @@ pub fn next_seq(now: DateTime<Utc>) -> u32 {
 }
 
 /// 设置指定日期下当前序列值（用于跨进程持久化恢复）。
-/// 传入的 value 表示“已使用的最后一个值”，下一次 next_seq 会在其基础上 +1。
+/// 传入的 value 表示"已使用的最后一个值"，下一次 next_seq 会在其基础上 +1。
 pub fn set_sequence_for(date: &str, value: u32) {
     {
-        let mut guard = SEQ_DAY.write().unwrap();
+        let mut guard = SEQ_DAY.write();
         *guard = Some(date.to_string());
     }
     SEQ_COUNTER.store(value, Ordering::Relaxed);
@@ -54,7 +54,11 @@ pub fn parse_naming_template(tpl: &str, screen_index: usize, now: DateTime<Utc>)
     let re = Regex::new(r"\{([^{}:]+)(?::([^{}]+))?\}").expect("regex");
     let mut last = 0;
     for cap in re.captures_iter(tpl) {
-        let m = cap.get(0).unwrap();
+        // 安全：regex 捕获的第 0 组（完整匹配）总是存在
+        let m = match cap.get(0) {
+            Some(m) => m,
+            None => continue,
+        };
         out.push_str(&tpl[last..m.start()]);
         let key = &cap[1];
         match key {

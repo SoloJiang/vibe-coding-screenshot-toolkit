@@ -417,42 +417,73 @@ fn mosaic_block_size(level: u8) -> i32 {
     }
 }
 
+/// 应用马赛克效果（并行版本）
+///
+/// 性能优化：使用 rayon 并行处理马赛克块
+/// - 每个块独立计算平均值
+/// - 避免数据竞争（每个块写入不同的像素区域）
 fn apply_mosaic(img: &mut Image, base: &[u8], x: i32, y: i32, w: i32, h: i32, block: i32) {
+    use rayon::prelude::*;
+
     let (w0, h0) = (img.width as i32, img.height as i32);
     let x2 = (x + w).min(w0);
     let y2 = (y + h).min(h0);
     let xs = x.max(0);
     let ys = y.max(0);
-    for by in (ys..y2).step_by(block as usize) {
-        for bx in (xs..x2).step_by(block as usize) {
+
+    // 收集所有需要处理的块坐标
+    let blocks: Vec<(i32, i32)> = (ys..y2)
+        .step_by(block as usize)
+        .flat_map(|by| (xs..x2).step_by(block as usize).map(move |bx| (bx, by)))
+        .collect();
+
+    // 并行计算每个块的平均颜色
+    let block_colors: Vec<_> = blocks
+        .par_iter()
+        .filter_map(|&(bx, by)| {
             let bw = (bx + block).min(x2) - bx;
             let bh = (by + block).min(y2) - by;
+
             // 计算平均
             let mut acc_r = 0u32;
             let mut acc_g = 0u32;
             let mut acc_b = 0u32;
             let mut acc_a = 0u32;
             let mut count = 0u32;
+
             for yy in by..by + bh {
                 for xx in bx..bx + bw {
                     let i = ((yy as u32 * img.width + xx as u32) * 4) as usize;
-                    acc_r += base[i] as u32;
-                    acc_g += base[i + 1] as u32;
-                    acc_b += base[i + 2] as u32;
-                    acc_a += base[i + 3] as u32;
-                    count += 1;
+                    if i + 3 < base.len() {
+                        acc_r += base[i] as u32;
+                        acc_g += base[i + 1] as u32;
+                        acc_b += base[i + 2] as u32;
+                        acc_a += base[i + 3] as u32;
+                        count += 1;
+                    }
                 }
             }
+
             if count == 0 {
-                continue;
+                return None;
             }
+
             let r = (acc_r / count) as u8;
             let g = (acc_g / count) as u8;
             let b = (acc_b / count) as u8;
             let a = (acc_a / count) as u8;
-            for yy in by..by + bh {
-                for xx in bx..bx + bw {
-                    let i = ((yy as u32 * img.width + xx as u32) * 4) as usize;
+
+            Some((bx, by, bw, bh, r, g, b, a))
+        })
+        .collect();
+
+    // 串行应用颜色到图像（避免数据竞争）
+    // 由于每个块写入不同区域，这里也可以并行，但为了简单起见先串行
+    for (bx, by, bw, bh, r, g, b, a) in block_colors {
+        for yy in by..by + bh {
+            for xx in bx..bx + bw {
+                let i = ((yy as u32 * img.width + xx as u32) * 4) as usize;
+                if i + 3 < img.pixels.len() {
                     img.pixels[i] = r;
                     img.pixels[i + 1] = g;
                     img.pixels[i + 2] = b;
@@ -476,7 +507,10 @@ fn chaikin(pts: &[(f32, f32)]) -> Vec<(f32, f32)> {
         out.push(q);
         out.push(r);
     }
-    out.push(*pts.last().unwrap());
+    // 安全：前面已检查 pts.len() >= 2，所以 last() 必定有值
+    if let Some(&last_pt) = pts.last() {
+        out.push(last_pt);
+    }
     out
 }
 

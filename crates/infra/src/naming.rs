@@ -24,11 +24,16 @@ pub fn next_seq(now: DateTime<Utc>) -> u32 {
 }
 
 pub fn parse_template(tpl: &str, screen_index: usize, now: DateTime<Utc>) -> String {
-    let re = Regex::new(r"\{([^{}:]+)(?::([^{}]+))?\}").unwrap();
+    let re = Regex::new(r"\{([^{}:]+)(?::([^{}]+))?\}")
+        .expect("Invalid regex pattern for template parsing");
     let mut out = String::new();
     let mut last = 0;
     for cap in re.captures_iter(tpl) {
-        let m = cap.get(0).unwrap();
+        // 安全：regex 捕获的第 0 组（完整匹配）总是存在
+        let m = match cap.get(0) {
+            Some(m) => m,
+            None => continue,
+        };
         out.push_str(&tpl[last..m.start()]);
         match &cap[1] {
             "date" => {

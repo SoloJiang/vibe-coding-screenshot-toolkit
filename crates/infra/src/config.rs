@@ -77,7 +77,9 @@ pub fn save_config(cfg: &AppConfig) -> io::Result<()> {
         fs::create_dir_all(dir)?;
     }
     let tmp = p.with_extension("tmp");
-    fs::write(&tmp, serde_json::to_vec_pretty(cfg).unwrap())?;
+    let json_bytes = serde_json::to_vec_pretty(cfg)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    fs::write(&tmp, json_bytes)?;
     fs::rename(tmp, p)?;
     Ok(())
 }

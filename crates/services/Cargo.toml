@@ -6,6 +6,9 @@ edition = "2021"
 [dependencies]
 screenshot_core = { path = "../core" }
 anyhow = "1"
+tokio = { workspace = true }
+rayon = { workspace = true }
+tracing = { workspace = true }
 infra = { path = "../infra" }
 renderer = { path = "../renderer" }
 chrono = { workspace = true }
@@ -15,6 +18,8 @@ serde_json = "1"
 image = { version = "0.25", default-features = false, features=["png","jpeg"] }
 png = "0.17"
 regex = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }

@@ -1,6 +1,7 @@
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 #[derive(Default)]
@@ -79,19 +80,18 @@ impl MetricsRegistry {
         static COUNTERS: OnceLock<Mutex<HashMap<&'static str, &'static Counter>>> = OnceLock::new();
         let map_lock = COUNTERS.get_or_init(|| Mutex::new(HashMap::new()));
         {
-            let map = map_lock.lock().unwrap();
+            let map = map_lock.lock();
             if let Some(c) = map.get(name) {
                 return c;
             }
         }
         // Intentionally leak to obtain a 'static reference for global metrics in this process.
         let boxed: &'static Counter = Box::leak(Box::new(Counter::default()));
-        let mut map = map_lock.lock().unwrap();
+        let mut map = map_lock.lock();
         map.insert(name, boxed);
         MetricsRegistry::global()
             .counters
             .lock()
-            .unwrap()
             .insert(name, boxed);
         boxed
     }
@@ -100,29 +100,25 @@ impl MetricsRegistry {
         static HISTS: OnceLock<Mutex<HashMap<&'static str, &'static Histogram>>> = OnceLock::new();
         let lock = HISTS.get_or_init(|| Mutex::new(HashMap::new()));
         {
-            let map = lock.lock().unwrap();
+            let map = lock.lock();
             if let Some(h) = map.get(name) {
                 return h;
             }
         }
         let boxed: &'static Histogram = Box::leak(Box::new(Histogram::new(buckets.to_vec())));
-        let mut map = lock.lock().unwrap();
+        let mut map = lock.lock();
         map.insert(name, boxed);
-        MetricsRegistry::global()
-            .hists
-            .lock()
-            .unwrap()
-            .insert(name, boxed);
+        MetricsRegistry::global().hists.lock().insert(name, boxed);
         boxed
     }
 
     pub fn export_text() -> String {
         let reg = MetricsRegistry::global();
         let mut out = String::new();
-        for (name, c) in reg.counters.lock().unwrap().iter() {
+        for (name, c) in reg.counters.lock().iter() {
             out.push_str(&format!("counter{{name=\"{}\"}} {}\n", name, c.get()));
         }
-        for (name, h) in reg.hists.lock().unwrap().iter() {
+        for (name, h) in reg.hists.lock().iter() {
             let (pairs, sum, count) = h.snapshot();
             for (b, v) in pairs {
                 out.push_str(&format!(

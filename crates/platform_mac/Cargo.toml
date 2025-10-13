@@ -9,6 +9,8 @@ screenshot_core = { path = "../core" }
 chrono = { workspace = true }
 uuid = { workspace = true }
 anyhow = { workspace = true }
+tokio = { workspace = true }
+rayon = { workspace = true }
 image = { version = "0.25", default-features = false, features=["png"] }
 tempfile = "3"
 xcap = { version = "0.7.0", default-features = false, features=["image"] }

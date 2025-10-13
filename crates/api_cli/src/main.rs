@@ -60,7 +60,8 @@ struct CaptureInteractiveArgs {
     clipboard: bool,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // 初始化日志
     let _ = fmt()
         .with_env_filter(
@@ -78,26 +79,38 @@ fn main() {
             );
         }
         Some(Commands::CaptureInteractive(args)) => {
-            handle_interactive_capture(args);
+            handle_interactive_capture_async(args).await;
         }
     }
 }
 
-fn handle_interactive_capture(args: CaptureInteractiveArgs) {
+/// 异步版本的交互式截图处理
+///
+/// 注意：在 macOS 上，GUI 事件循环必须在主线程运行，
+/// 所以我们使用 block_in_place 在主线程上同步执行截图，
+/// 然后异步处理导出操作
+async fn handle_interactive_capture_async(args: CaptureInteractiveArgs) {
     #[cfg(target_os = "macos")]
     {
-        let selector: Box<dyn ui_overlay::RegionSelector> =
-            ui_overlay::create_gui_region_selector();
+        // 在主线程上执行截图（macOS 的 EventLoop 必须在主线程）
+        // 使用 tokio::task::block_in_place 允许在异步上下文中运行同步代码
+        let shot_result = tokio::task::block_in_place(|| {
+            let selector: Box<dyn ui_overlay::RegionSelector> =
+                ui_overlay::create_gui_region_selector();
+            MacCapturer::capture_region_interactive_custom(selector.as_ref())
+        });
 
-        match MacCapturer::capture_region_interactive_custom(selector.as_ref()) {
+        match shot_result {
             Ok(shot) => {
-                export_screenshot(
+                // 异步导出截图
+                export_screenshot_async(
                     shot,
                     args.template,
                     args.out_dir,
                     "交互式截图",
                     args.clipboard,
-                );
+                )
+                .await;
             }
             Err(e) => {
                 // 根据错误类型提供更友好的提示
@@ -169,11 +182,14 @@ fn handle_interactive_capture(args: CaptureInteractiveArgs) {
     }
 }
 
-fn export_screenshot(
+/// 异步版本的导出截图
+///
+/// 性能优化：并行执行文件导出和剪贴板复制
+async fn export_screenshot_async(
     shot: screenshot_core::Screenshot,
     template: String,
     out_dir: PathBuf,
-    desc: &str,
+    desc: &'static str,
     clipboard: bool,
 ) {
     let filename = gen_file_name(&template, 1);
@@ -197,42 +213,66 @@ fn export_screenshot(
         }
     };
 
-    if let Err(e) = export.export_png_to_file(&shot, &[], &out) {
-        match e.to_string().as_str() {
-            s if s.contains("permission") || s.contains("Permission") => {
-                eprintln!("❌ {}导出失败: 文件写入权限不足", desc);
-                eprintln!(
-                    "💡 提示：请检查输出目录的写入权限：{}",
-                    out.parent().unwrap_or(&out).display()
-                );
-            }
-            s if s.contains("No such file") || s.contains("not found") => {
-                eprintln!("❌ {}导出失败: 输出目录不存在", desc);
-                eprintln!(
-                    "💡 提示：请确认目录路径正确：{}",
-                    out.parent().unwrap_or(&out).display()
-                );
-            }
-            s if s.contains("disk") || s.contains("space") => {
-                eprintln!("❌ {}导出失败: 磁盘空间不足", desc);
-                eprintln!("💡 提示：请检查可用磁盘空间。");
-            }
-            _ => {
-                eprintln!("❌ {}导出失败: {e}", desc);
-                eprintln!("💡 提示：请检查输出路径和权限设置。");
-            }
-        }
-        std::process::exit(1);
+    // 并行执行文件导出和剪贴板复制（如果需要）
+    let file_task = export.export_png_to_file_async(&shot, &[], &out);
+
+    let clipboard_task = if clipboard {
+        // 在 blocking pool 中执行剪贴板操作
+        let shot_clone = shot.clone();
+        let export_clone = export.clone();
+        Some(tokio::task::spawn_blocking(move || {
+            export_clone.export_png_to_clipboard(&shot_clone, &[])
+        }))
     } else {
-        println!("✅ {}已保存: {}", desc, out.display());
+        None
+    };
+
+    // 等待文件导出完成
+    match file_task.await {
+        Ok(_) => {
+            println!("✅ {}已保存: {}", desc, out.display());
+        }
+        Err(e) => {
+            match e.to_string().as_str() {
+                s if s.contains("permission") || s.contains("Permission") => {
+                    eprintln!("❌ {}导出失败: 文件写入权限不足", desc);
+                    eprintln!(
+                        "💡 提示：请检查输出目录的写入权限：{}",
+                        out.parent().unwrap_or(&out).display()
+                    );
+                }
+                s if s.contains("No such file") || s.contains("not found") => {
+                    eprintln!("❌ {}导出失败: 输出目录不存在", desc);
+                    eprintln!(
+                        "💡 提示：请确认目录路径正确：{}",
+                        out.parent().unwrap_or(&out).display()
+                    );
+                }
+                s if s.contains("disk") || s.contains("space") => {
+                    eprintln!("❌ {}导出失败: 磁盘空间不足", desc);
+                    eprintln!("💡 提示：请检查可用磁盘空间。");
+                }
+                _ => {
+                    eprintln!("❌ {}导出失败: {e}", desc);
+                    eprintln!("💡 提示：请检查输出路径和权限设置。");
+                }
+            }
+            std::process::exit(1);
+        }
     }
 
-    // 如果指定了clipboard选项，同时复制到剪贴板
-    if clipboard {
-        if let Err(e) = export.export_png_to_clipboard(&shot, &[]) {
-            eprintln!("⚠️  剪贴板复制失败: {e}");
-        } else {
-            println!("📋 已复制到剪贴板");
+    // 等待剪贴板操作完成（如果有）
+    if let Some(task) = clipboard_task {
+        match task.await {
+            Ok(Ok(_)) => {
+                println!("📋 已复制到剪贴板");
+            }
+            Ok(Err(e)) => {
+                eprintln!("⚠️  剪贴板复制失败: {e}");
+            }
+            Err(e) => {
+                eprintln!("⚠️  剪贴板任务失败: {e}");
+            }
         }
     }
 }
