@@ -111,11 +111,9 @@ impl EventHandler {
             }
             (MouseButton::Left, ElementState::Released) => {
                 state.dragging = false;
-                if state.has_valid_selection() {
-                    EventResult::Finish
-                } else {
-                    EventResult::Continue(false)
-                }
+                // 拖动结束后继续保持选框显示，等待用户按 Enter 确认
+                // 触发重绘以显示最终选框
+                EventResult::Continue(state.has_valid_selection())
             }
             _ => EventResult::Continue(false),
         }
@@ -210,7 +208,8 @@ mod tests {
             EventHandler::handle_mouse_input(&mut state, MouseButton::Left, ElementState::Released);
 
         assert!(!state.dragging);
-        assert!(matches!(result, EventResult::Finish));
+        // 修改断言：鼠标释放不再立即完成，而是继续显示选框等待确认
+        assert!(matches!(result, EventResult::Continue(true)));
     }
 
     #[test]
