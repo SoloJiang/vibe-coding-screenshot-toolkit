@@ -100,13 +100,19 @@ impl VirtualDesktop {
             anyhow::bail!("未找到任何显示器");
         }
 
+        #[cfg(debug_assertions)]
+        {
+            tracing::debug!("=== 显示器检测开始 (xcap) ===");
+            tracing::debug!("检测到 {} 个显示器", monitors.len());
+        }
+
         let mut displays = Vec::new();
         let mut min_x = i32::MAX;
         let mut min_y = i32::MAX;
         let mut max_x = i32::MIN;
         let mut max_y = i32::MIN;
 
-        for monitor in monitors {
+        for monitor in monitors.iter() {
             let id = monitor.id().unwrap_or(0);
             let name = monitor.name().unwrap_or_else(|_| format!("Display {}", id));
             let is_primary = monitor.is_primary().unwrap_or(false);
@@ -115,6 +121,51 @@ impl VirtualDesktop {
             let width = monitor.width().unwrap_or(1920);
             let height = monitor.height().unwrap_or(1080);
             let scale_factor = monitor.scale_factor().unwrap_or(1.0) as f64;
+
+            #[cfg(debug_assertions)]
+            {
+                let i = displays.len(); // 使用当前 displays 的长度作为索引
+                tracing::debug!(
+                    "[xcap Monitor {}] id={}, name={:?}, primary={}",
+                    i,
+                    id,
+                    name,
+                    is_primary
+                );
+                tracing::debug!(
+                    "[xcap Monitor {}] 逻辑坐标: ({}, {}), 逻辑尺寸: {}x{}",
+                    i,
+                    x,
+                    y,
+                    width,
+                    height
+                );
+                tracing::debug!("[xcap Monitor {}] scale_factor: {}", i, scale_factor);
+
+                // 尝试捕获图像获取实际物理尺寸
+                if let Ok(img) = monitor.capture_image() {
+                    tracing::debug!(
+                        "[xcap Monitor {}] 实际捕获图像尺寸: {}x{} (物理像素)",
+                        i,
+                        img.width(),
+                        img.height()
+                    );
+
+                    // 检查逻辑尺寸 * scale 是否与实际捕获尺寸一致
+                    let computed_phys_width = (width as f64 * scale_factor).round() as u32;
+                    let computed_phys_height = (height as f64 * scale_factor).round() as u32;
+                    if computed_phys_width != img.width() || computed_phys_height != img.height() {
+                        tracing::warn!(
+                            "[xcap Monitor {}] ⚠️  计算的物理尺寸 {}x{} 与实际捕获 {}x{} 不一致!",
+                            i,
+                            computed_phys_width,
+                            computed_phys_height,
+                            img.width(),
+                            img.height()
+                        );
+                    }
+                }
+            }
 
             // 更新边界
             min_x = min_x.min(x);
@@ -132,6 +183,11 @@ impl VirtualDesktop {
                 height,
                 scale_factor,
             });
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            tracing::debug!("=== 显示器检测完成 ===");
         }
 
         let total_bounds = VirtualBounds {
@@ -433,33 +489,39 @@ impl MacCapturer {
         let virtual_screenshot = Self::capture_all().context("获取虚拟桌面截图失败")?;
         let virtual_frame = &virtual_screenshot.raw.primary;
 
-        // 添加调试信息
         #[cfg(debug_assertions)]
         {
+            tracing::debug!("=== 虚拟桌面截图信息 ===");
             tracing::debug!(
-                "虚拟桌面调试: 尺寸 {}x{}, 边界({}, {}) 到 ({}, {})",
+                "虚拟画布尺寸: {}x{} (物理像素)",
                 virtual_frame.width,
-                virtual_frame.height,
+                virtual_frame.height
+            );
+            tracing::debug!(
+                "虚拟边界 (逻辑): ({}, {}) 到 ({}, {})",
                 virtual_desktop.total_bounds.min_x,
                 virtual_desktop.total_bounds.min_y,
                 virtual_desktop.total_bounds.max_x,
                 virtual_desktop.total_bounds.max_y
             );
-            tracing::debug!(
-                "虚拟桌面调试: 显示器数量 {}",
-                virtual_desktop.displays.len()
-            );
+            tracing::debug!("显示器数量: {}", virtual_desktop.displays.len());
+
             for (i, display_info) in virtual_desktop.displays.iter().enumerate() {
                 tracing::debug!(
-                    "显示器 {} [逻辑坐标]: ID={}, 位置({}, {}), 尺寸{}x{}, scale={}, 主屏={}",
+                    "[Display {}] ID={}, {:?}, primary={}",
                     i,
                     display_info.id,
+                    display_info.name,
+                    display_info.is_primary
+                );
+                tracing::debug!(
+                    "[Display {}] 逻辑坐标: ({}, {}), 逻辑尺寸: {}x{}, scale={}",
+                    i,
                     display_info.x,
                     display_info.y,
                     display_info.width,
                     display_info.height,
-                    display_info.scale_factor,
-                    display_info.is_primary
+                    display_info.scale_factor
                 );
             }
         }
@@ -525,19 +587,47 @@ impl MacCapturer {
         let physical_width = (physical_max_x - physical_min_x) as u32;
         let physical_height = (physical_max_y - physical_min_y) as u32;
 
-        // 添加物理坐标转换的调试信息
         #[cfg(debug_assertions)]
         {
-            tracing::debug!("转换为物理坐标后:");
-            for (i, layout) in monitor_layouts.iter().enumerate() {
+            tracing::debug!("=== xcap 和计算的物理坐标对比 ===");
+            for (i, display_info) in virtual_desktop.displays.iter().enumerate() {
+                let computed_phys_x =
+                    (display_info.x as f64 * display_info.scale_factor).round() as i32;
+                let computed_phys_y =
+                    (display_info.y as f64 * display_info.scale_factor).round() as i32;
+                let computed_phys_width =
+                    (display_info.width as f64 * display_info.scale_factor).round() as u32;
+                let computed_phys_height =
+                    (display_info.height as f64 * display_info.scale_factor).round() as u32;
+
                 tracing::debug!(
-                    "显示器 {} [物理坐标]: 位置({}, {}), 尺寸{}x{}",
+                    "[Display {}] xcap逻辑: ({}, {}) {}x{} scale={}",
                     i,
-                    layout.x,
-                    layout.y,
-                    layout.width,
-                    layout.height
+                    display_info.x,
+                    display_info.y,
+                    display_info.width,
+                    display_info.height,
+                    display_info.scale_factor
                 );
+                tracing::debug!(
+                    "[Display {}] 计算物理: ({}, {}) {}x{}",
+                    i,
+                    computed_phys_x,
+                    computed_phys_y,
+                    computed_phys_width,
+                    computed_phys_height
+                );
+
+                if let Some(layout) = monitor_layouts.get(i) {
+                    tracing::debug!(
+                        "[Display {}] MonitorLayout: ({}, {}) {}x{}",
+                        i,
+                        layout.x,
+                        layout.y,
+                        layout.width,
+                        layout.height
+                    );
+                }
             }
             tracing::debug!(
                 "物理虚拟边界: ({}, {}) 尺寸 {}x{}",
@@ -604,33 +694,33 @@ impl MacCapturer {
         let cw = canvas_x2.saturating_sub(canvas_x);
         let ch = canvas_y2.saturating_sub(canvas_y);
 
-        // 添加详细调试信息
         #[cfg(debug_assertions)]
         {
-            tracing::debug!("详细裁剪调试:");
+            tracing::debug!("=== 选区裁剪计算 ===");
             tracing::debug!(
-                "  输入Region: ({}, {}, {}, {})",
+                "用户选择 Region: x={}, y={}, w={}, h={}, scale={}",
                 rect.x,
                 rect.y,
                 rect.w,
-                rect.h
+                rect.h,
+                rect.scale
             );
             tracing::debug!(
-                "  应用scale后物理坐标: ({}, {}, {}, {})",
+                "应用 scale 后: x={}, y={}, w={}, h={}",
                 x_virtual,
                 y_virtual,
                 w,
                 h
             );
             tracing::debug!(
-                "  物理虚拟边界: min({}, {}), max({}, {})",
+                "虚拟桌面物理边界: min_x={}, min_y={}, max_x={}, max_y={}",
                 physical_min_x,
                 physical_min_y,
                 physical_min_x + physical_width as i32,
                 physical_min_y + physical_height as i32
             );
             tracing::debug!(
-                "  Canvas计算: ({} - {}) = {}, ({} - {}) = {}",
+                "Canvas 坐标计算: ({} - {}) = {}, ({} - {}) = {}",
                 x_virtual,
                 physical_min_x,
                 canvas_x,
@@ -638,18 +728,32 @@ impl MacCapturer {
                 physical_min_y,
                 canvas_y
             );
+            tracing::debug!("裁剪边界: canvas_x2={}, canvas_y2={}", canvas_x2, canvas_y2);
             tracing::debug!(
-                "  最终Canvas区域: ({}, {}, {}, {})",
+                "最终裁剪区域: ({}, {}) 尺寸 {}x{}",
                 canvas_x,
                 canvas_y,
                 cw,
                 ch
             );
-            tracing::debug!(
-                "  画布尺寸: {}x{}",
-                virtual_frame.width,
-                virtual_frame.height
-            );
+            tracing::debug!("画布尺寸: {}x{}", virtual_frame.width, virtual_frame.height);
+
+            // 检查是否超出边界
+            if canvas_x2 > virtual_frame.width || canvas_y2 > virtual_frame.height {
+                tracing::warn!("⚠️  裁剪区域超出画布边界!");
+                tracing::warn!(
+                    "   canvas_x2={} > width={}: {}",
+                    canvas_x2,
+                    virtual_frame.width,
+                    canvas_x2 > virtual_frame.width
+                );
+                tracing::warn!(
+                    "   canvas_y2={} > height={}: {}",
+                    canvas_y2,
+                    virtual_frame.height,
+                    canvas_y2 > virtual_frame.height
+                );
+            }
         }
 
         if cw == 0 || ch == 0 {

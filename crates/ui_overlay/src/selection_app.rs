@@ -31,8 +31,6 @@ pub struct SelectionApp {
     image_cache: ImageCache,
     /// 帧率控制器，限制到 60 FPS
     frame_timer: FrameTimer,
-    /// 显示器布局信息（用于精确定位窗口）
-    monitor_layouts: Option<Vec<crate::MonitorLayout>>,
 }
 
 /// 渲染数据结构
@@ -49,7 +47,6 @@ impl SelectionApp {
         bg_w: u32,
         bg_h: u32,
         virtual_bounds: Option<(i32, i32, u32, u32)>,
-        monitor_layouts: Option<&[crate::MonitorLayout]>,
     ) -> Self {
         Self {
             attrs,
@@ -63,7 +60,6 @@ impl SelectionApp {
             state: SelectionState::new(virtual_bounds),
             image_cache: ImageCache::new(),
             frame_timer: FrameTimer::new(TARGET_FPS),
-            monitor_layouts: monitor_layouts.map(|layouts| layouts.to_vec()),
         }
     }
 
@@ -119,18 +115,25 @@ impl SelectionApp {
         let window_virtual_y = self.window_manager.windows[window_index].virtual_y;
 
         #[cfg(debug_assertions)]
-        if render_data.selection_exists {
+        if render_data.selection_exists && window_index == 0 {
+            // 只在第一个窗口打印，避免刷屏
+            let window_info = &self.window_manager.windows[window_index];
             let (x0, y0, x1, y1) = render_data.selection_rect;
+            tracing::debug!("=== 渲染坐标转换 [Window {}] ===", window_index);
+            tracing::debug!("选择框虚拟坐标: ({}, {}) 到 ({}, {})", x0, y0, x1, y1);
+            tracing::debug!("窗口虚拟位置: ({}, {})", window_virtual_x, window_virtual_y);
             tracing::debug!(
-                "渲染窗口 {}: virtual_pos({}, {}), 选择框虚拟坐标({}, {}, {}, {})",
-                window_index,
-                window_virtual_x,
-                window_virtual_y,
-                x0,
-                y0,
-                x1,
-                y1
+                "窗口物理尺寸: {}x{}",
+                window_info.size_px.width,
+                window_info.size_px.height
             );
+
+            if let Some((vx, vy, vw, vh)) = self.state.virtual_bounds {
+                tracing::debug!("虚拟边界: ({}, {}) 尺寸 {}x{}", vx, vy, vw, vh);
+                let offset_x = -(window_virtual_x - vx);
+                let offset_y = -(window_virtual_y - vy);
+                tracing::debug!("背景偏移: ({}, {})", offset_x, offset_y);
+            }
         }
 
         // 获取缓存的图像（不再需要每次创建）
@@ -414,36 +417,17 @@ impl ApplicationHandler for SelectionApp {
             return;
         }
 
-        // 使用提供的显示器布局信息（如果有）
-        self.window_manager.initialize_windows_with_layouts(
-            event_loop,
-            &self.attrs,
-            self.monitor_layouts.as_deref(),
-        );
-
-        // 添加调试信息
-        #[cfg(debug_assertions)]
-        if let Some(ref layouts) = self.monitor_layouts {
-            tracing::debug!("使用提供的显示器布局信息: {} 个显示器", layouts.len());
-            for (i, layout) in layouts.iter().enumerate() {
-                tracing::debug!(
-                    "  显示器 {}: 位置({}, {}), 尺寸{}x{}, scale={}",
-                    i,
-                    layout.x,
-                    layout.y,
-                    layout.width,
-                    layout.height,
-                    layout.scale_factor
-                );
-            }
-        }
+        // 使用 winit 的显示器信息创建窗口
+        self.window_manager
+            .initialize_windows(event_loop, &self.attrs);
 
         #[cfg(debug_assertions)]
         {
+            tracing::debug!("=== SelectionApp 窗口信息 ===");
             tracing::debug!("创建了 {} 个窗口", self.window_manager.windows.len());
             for (i, window_info) in self.window_manager.windows.iter().enumerate() {
                 tracing::debug!(
-                    "  窗口 {}: virtual_pos({}, {}), size_px={}x{}, scale={}",
+                    "[Window {}] virtual_pos=({}, {}), size_px={}x{}, scale={}",
                     i,
                     window_info.virtual_x,
                     window_info.virtual_y,
