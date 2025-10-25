@@ -112,7 +112,7 @@ impl VirtualDesktop {
         let mut max_x = i32::MIN;
         let mut max_y = i32::MIN;
 
-        for monitor in monitors.iter() {
+        for monitor in monitors {
             let id = monitor.id().unwrap_or(0);
             let name = monitor.name().unwrap_or_else(|_| format!("Display {}", id));
             let is_primary = monitor.is_primary().unwrap_or(false);
