@@ -3,6 +3,16 @@
 /// 管理选择框的状态、修饰键、重绘控制等
 use crate::Region;
 
+/// 应用模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum AppMode {
+    /// 选择区域模式
+    SelectingRegion,
+    /// 标注编辑模式
+    EditingAnnotations,
+}
+
 /// 选择器应用的状态
 ///
 /// 包含选择框的位置、大小、修饰键状态以及性能优化相关的缓存
@@ -31,6 +41,11 @@ pub struct SelectionState {
     cached_rect: Option<(f64, f64, f64, f64)>,
     /// 缓存是否有效
     cache_valid: bool,
+    /// 当前应用模式
+    #[allow(dead_code)]
+    pub app_mode: AppMode,
+    /// 工具栏是否可见
+    pub toolbar_visible: bool,
 }
 
 impl SelectionState {
@@ -49,6 +64,8 @@ impl SelectionState {
             last_redraw_time: std::time::Instant::now(),
             cached_rect: None,
             cache_valid: false,
+            app_mode: AppMode::SelectingRegion,
+            toolbar_visible: false,
         }
     }
 

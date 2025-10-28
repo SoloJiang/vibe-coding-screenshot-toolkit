@@ -8,7 +8,8 @@ use services::StubClipboard;
 use services::{gen_file_name, ExportService};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Parser)]
 #[command(
@@ -60,15 +61,96 @@ struct CaptureInteractiveArgs {
     clipboard: bool,
 }
 
+/// 初始化日志系统 - 同时输出到控制台和文件
+fn init_logging() {
+    use chrono::Local;
+
+    // 创建日志目录
+    let log_dir = std::env::temp_dir().join("screenshot_logs");
+    std::fs::create_dir_all(&log_dir).ok();
+
+    // 生成带时间戳的日志文件名
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let log_filename = format!("screenshot_{}.log", timestamp);
+
+    // 创建文件 appender（每天滚动）
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("screenshot")
+        .filename_suffix("log")
+        .max_log_files(7) // 保留最近 7 天的日志
+        .build(&log_dir)
+        .expect("Failed to create log file appender");
+
+    // 获取环境变量中的日志级别，默认为 info
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // 创建控制台输出层
+    let console_layer = fmt::layer().with_target(false).with_writer(std::io::stdout);
+
+    // 创建文件输出层（包含更详细的信息）
+    let file_layer = fmt::layer()
+        .with_target(true)
+        .with_line_number(true)
+        .with_ansi(false) // 文件不需要 ANSI 颜色
+        .with_writer(file_appender);
+
+    // 组合所有层
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(console_layer)
+        .with(file_layer)
+        .init();
+
+    // 打印日志文件位置
+    let log_path = format!("{}/{}", log_dir.display(), log_filename);
+    println!("📝 日志文件: {}", log_path);
+    tracing::info!("========================================");
+    tracing::info!("Screenshot Tool - Session Start");
+    tracing::info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    tracing::info!("Log file: {}", log_path);
+    tracing::info!("========================================");
+
+    // 设置 panic hook，将 panic 信息记录到日志
+    let log_path_clone = log_path.clone();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let payload = panic_info.payload();
+        let message = if let Some(s) = payload.downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic payload".to_string()
+        };
+
+        let location = if let Some(location) = panic_info.location() {
+            format!(
+                "{}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            )
+        } else {
+            "Unknown location".to_string()
+        };
+
+        tracing::error!("========================================");
+        tracing::error!("PANIC OCCURRED!");
+        tracing::error!("Message: {}", message);
+        tracing::error!("Location: {}", location);
+        tracing::error!("========================================");
+
+        eprintln!("\n❌ 程序发生严重错误 (panic)！");
+        eprintln!("📝 详细错误信息已保存到日志文件: {}", log_path_clone);
+        eprintln!("💡 请将日志文件提供给开发者以便排查问题。");
+        eprintln!("\nPanic: {} at {}", message, location);
+    }));
+}
+
 #[tokio::main]
 async fn main() {
-    // 初始化日志
-    let _ = fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .try_init();
+    // 初始化日志 - 同时输出到控制台和文件
+    init_logging();
 
     let cli = Cli::parse();
     match cli.command {

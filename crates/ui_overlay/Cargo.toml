@@ -34,3 +34,10 @@ objc2-quartz-core = "0.3.1"
 metal = "0.29"
 core-graphics-types = "0.1"
 
+# egui UI 框架（用于标注工具栏）
+egui = "0.33"
+egui-winit = "0.33"
+egui-wgpu = "0.33"
+# 不显式指定 wgpu 版本，使用 egui-wgpu 依赖的版本
+pollster = "0.4"
+

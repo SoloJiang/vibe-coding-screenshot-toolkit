@@ -367,9 +367,70 @@ impl SelectionApp {
         self.request_redraw_all();
     }
 
+    /// 处理窗口尺寸变化事件
+    ///
+    /// 当窗口尺寸改变时（通常由 `request_inner_size` 触发），
+    /// 需要同步更新窗口位置和渲染后端。
+    ///
+    /// # 平台特定行为
+    ///
+    /// macOS 上，系统在调整窗口尺寸时可能会自动移动窗口位置，
+    /// 因此需要强制重置窗口位置到目标坐标。
     fn handle_resized(&mut self, window_index: usize, new_size: winit::dpi::PhysicalSize<u32>) {
-        self.window_manager.windows[window_index].update_size(new_size);
+        #[cfg(debug_assertions)]
+        {
+            let old_size = self.window_manager.windows[window_index].size_px;
+            if old_size != new_size {
+                tracing::debug!(
+                    "[Window {}] Resized: {}x{} -> {}x{}",
+                    window_index,
+                    old_size.width,
+                    old_size.height,
+                    new_size.width,
+                    new_size.height
+                );
+            }
+        }
+
+        // 修正窗口位置（macOS 在 resize 时可能移动窗口）
+        self.correct_window_position(window_index);
+
+        // 更新窗口尺寸信息并清除渲染后端
+        let window_info = &mut self.window_manager.windows[window_index];
+        window_info.update_size(new_size);
+        window_info.render_backend = None;
+
         self.request_redraw_all();
+    }
+
+    /// 修正窗口位置到目标坐标
+    ///
+    /// 在 macOS 上，窗口尺寸变化时系统可能会自动调整窗口位置。
+    /// 该方法强制将窗口重新定位到其在虚拟桌面中的正确位置。
+    fn correct_window_position(&mut self, window_index: usize) {
+        let window_info = &mut self.window_manager.windows[window_index];
+        let target_x = window_info.virtual_x;
+        let target_y = window_info.virtual_y;
+
+        window_info
+            .window
+            .set_outer_position(winit::dpi::PhysicalPosition::new(target_x, target_y));
+
+        #[cfg(debug_assertions)]
+        {
+            if let Ok(actual_pos) = window_info.window.outer_position() {
+                if actual_pos.x != target_x || actual_pos.y != target_y {
+                    tracing::warn!(
+                        "[Window {}] 位置修正: 目标=({}, {}), 实际=({}, {})",
+                        window_index,
+                        target_x,
+                        target_y,
+                        actual_pos.x,
+                        actual_pos.y
+                    );
+                }
+            }
+        }
     }
 
     fn handle_redraw_requested(&mut self, window_index: usize) {

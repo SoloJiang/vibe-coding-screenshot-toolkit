@@ -126,6 +126,7 @@ mod selection_app;
 mod selection_render;
 mod selection_state;
 mod selector;
+pub mod toolbar;
 mod window_info;
 mod window_manager;
 

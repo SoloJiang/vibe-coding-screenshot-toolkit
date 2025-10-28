@@ -111,8 +111,11 @@ impl EventHandler {
             }
             (MouseButton::Left, ElementState::Released) => {
                 state.dragging = false;
-                // 拖动结束后继续保持选框显示，等待用户按 Enter 确认
-                // 触发重绘以显示最终选框
+                // 拖动结束后显示工具栏
+                if state.has_valid_selection() {
+                    state.toolbar_visible = true;
+                }
+                // 触发重绘以显示最终选框和工具栏
                 EventResult::Continue(state.has_valid_selection())
             }
             _ => EventResult::Continue(false),
