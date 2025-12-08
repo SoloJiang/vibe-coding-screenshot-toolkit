@@ -132,22 +132,6 @@ impl SelectionState {
         sx != ex && sy != ey
     }
 
-    /// 构建当前选择的 Region 对象
-    pub fn build_region(&mut self, scale: f32) -> Option<Region> {
-        if !self.has_valid_selection() {
-            return None;
-        }
-
-        let (sx, sy, ex, ey) = self.calculate_selection_rect();
-        Some(Region {
-            x: sx.round() as f32,
-            y: sy.round() as f32,
-            w: (ex - sx).abs().round() as f32,
-            h: (ey - sy).abs().round() as f32,
-            scale,
-        })
-    }
-
     /// 重绘频率控制
     ///
     /// 限制到 60 FPS (16ms 间隔) 以优化性能
@@ -166,11 +150,6 @@ impl SelectionState {
     pub fn mark_redraw_requested(&mut self) {
         self.redraw_pending = true;
         self.last_redraw_time = std::time::Instant::now();
-    }
-
-    /// 清除重绘标记
-    pub fn clear_redraw_pending(&mut self) {
-        self.redraw_pending = false;
     }
 }
 

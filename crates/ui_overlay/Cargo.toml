@@ -14,30 +14,21 @@ tokio = { workspace = true }
 rayon = { workspace = true }
 winit = "0.30"
 image = { workspace = true }
-softbuffer = "0.4.6"
 raw-window-handle = "0.6"
 
-# 默认使用工作区的 skia-safe 配置（GL + textlayout + svg）
-skia-safe = { workspace = true }
-
-# macOS 依赖：用于窗口层级/行为控制和 Metal GPU 渲染
-[target.'cfg(target_os = "macos")'.dependencies]
-# 在 macOS 上启用 Metal 特性
-skia-safe = { version = "0.88", features = ["gl", "metal", "textlayout", "svg"] }
-
-# Objective-C 运行时交互（平台集成）
-objc2 = "0.6.2"
-objc2-app-kit = "0.3.1"
-objc2-quartz-core = "0.3.1"
-
-# Metal GPU 渲染
-metal = "0.29"
-core-graphics-types = "0.1"
-
-# egui UI 框架（用于标注工具栏）
+# egui UI 框架（用于 UI 渲染和标注工具栏）
 egui = "0.33"
 egui-winit = "0.33"
 egui-wgpu = "0.33"
 # 不显式指定 wgpu 版本，使用 egui-wgpu 依赖的版本
 pollster = "0.4"
+# 用于背景渲染
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# macOS 依赖：用于窗口层级/行为控制
+[target.'cfg(target_os = "macos")'.dependencies]
+# Objective-C 运行时交互（平台集成）
+objc2 = "0.6.2"
+objc2-app-kit = "0.3.1"
+objc2-quartz-core = "0.3.1"
 

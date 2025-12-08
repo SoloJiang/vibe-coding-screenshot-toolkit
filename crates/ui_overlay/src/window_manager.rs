@@ -22,9 +22,6 @@ pub struct WindowManager {
     pub windows: Vec<WindowInfo>,
 }
 
-/// Scale factor 阈值：用于判断是否为标准 DPI 显示器
-const SCALE_FACTOR_ONE_THRESHOLD: f64 = 0.01;
-
 /// 窗口尺寸验证容差（像素）- 仅在 debug 模式下使用
 #[cfg(debug_assertions)]
 const SIZE_VALIDATION_TOLERANCE: i32 = 1;
@@ -53,14 +50,6 @@ impl WindowManager {
         !self.windows.is_empty()
     }
 
-    /// 判断是否为标准 DPI 显示器（scale factor ≈ 1.0）
-    ///
-    /// macOS 上 scale_factor = 1.0 的显示器需要特殊处理，
-    /// 因为 winit 会将 PhysicalSize 误当作 LogicalSize。
-    fn is_standard_dpi(scale_factor: f64) -> bool {
-        (scale_factor - 1.0).abs() < SCALE_FACTOR_ONE_THRESHOLD
-    }
-
     /// 根据显示器特性选择合适的窗口尺寸类型
     ///
     /// # Arguments
@@ -73,16 +62,20 @@ impl WindowManager {
         physical_size: winit::dpi::PhysicalSize<u32>,
         scale_factor: f64,
     ) -> winit::dpi::Size {
-        if Self::is_standard_dpi(scale_factor) {
-            // 标准 DPI 显示器：使用 LogicalSize 避免尺寸缩小
-            winit::dpi::Size::Logical(winit::dpi::LogicalSize::new(
-                physical_size.width as f64,
-                physical_size.height as f64,
-            ))
-        } else {
-            // 高 DPI 显示器：使用 PhysicalSize
-            winit::dpi::Size::Physical(physical_size)
-        }
+        // 关键修复：必须使用 LogicalSize，让 winit 自己处理 scale
+        //
+        // 问题分析：
+        // 1. monitor.size() 返回的是实际物理像素尺寸（如 1080x1920）
+        // 2. 如果我们用 PhysicalSize(1080, 1920)，winit 会创建 1080x1920 像素的窗口
+        // 3. 但如果窗口的 scale 是某个值，最终显示的"逻辑点"会被按 scale 缩放
+        // 4. 我们需要的是逻辑尺寸 = 物理尺寸 / scale
+        //
+        // 解决方案：使用 LogicalSize，逻辑尺寸 = 物理尺寸 / monitor.scale
+        //           这样 winit 会根据窗口的实际 scale 计算出正确的物理尺寸
+        let logical_width = physical_size.width as f64 / scale_factor;
+        let logical_height = physical_size.height as f64 / scale_factor;
+
+        winit::dpi::Size::Logical(winit::dpi::LogicalSize::new(logical_width, logical_height))
     }
 
     /// 验证窗口尺寸是否符合预期
@@ -234,7 +227,7 @@ impl WindowManager {
 
                 tracing::debug!("[Winit Monitor {}] name: {}", i, name);
                 tracing::debug!(
-                    "[Winit Monitor {}] 物理位置: ({}, {}), 物理尺寸: {}x{}",
+                    "[Winit Monitor {}] position() 返回: ({}, {}), size() 返回: {}x{} (类型声称是 Physical)",
                     i,
                     pos.x,
                     pos.y,
@@ -242,6 +235,18 @@ impl WindowManager {
                     size.height
                 );
                 tracing::debug!("[Winit Monitor {}] scale_factor: {}", i, scale);
+                tracing::debug!(
+                    "[Winit Monitor {}] 如果 position 是逻辑坐标，物理坐标应该是: ({}, {})",
+                    i,
+                    (pos.x as f64 * scale).round() as i32,
+                    (pos.y as f64 * scale).round() as i32
+                );
+                tracing::debug!(
+                    "[Winit Monitor {}] 如果 size 是逻辑尺寸，物理尺寸应该是: {}x{}",
+                    i,
+                    (size.width as f64 * scale).round() as u32,
+                    (size.height as f64 * scale).round() as u32
+                );
             }
         }
 
@@ -250,8 +255,35 @@ impl WindowManager {
             let physical_position = monitor.position();
             let scale = monitor.scale_factor();
 
+            #[cfg(debug_assertions)]
+            tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            tracing::info!(
+                "[创建窗口 {}] Monitor 信息: physical_size={}x{}, physical_position=({}, {}), scale={}",
+                window_index,
+                physical_size.width,
+                physical_size.height,
+                physical_position.x,
+                physical_position.y,
+                scale
+            );
+
             // 根据显示器特性选择合适的窗口尺寸类型
             let size_spec = Self::determine_window_size(physical_size, scale);
+
+            #[cfg(debug_assertions)]
+            {
+                let logical_w = physical_size.width as f64 / scale;
+                let logical_h = physical_size.height as f64 / scale;
+                tracing::info!(
+                    "[创建窗口 {}] 窗口尺寸类型: Logical (物理尺寸={}x{} / monitor.scale={} = 逻辑尺寸={:.0}x{:.0})",
+                    window_index,
+                    physical_size.width,
+                    physical_size.height,
+                    scale,
+                    logical_w,
+                    logical_h
+                );
+            }
 
             // 创建窗口属性：指定尺寸和位置
             let attrs = base_attrs
@@ -309,13 +341,84 @@ impl WindowManager {
                         );
                     }
 
+                    // 重要：从 window 本身获取实际的 scale_factor 和位置
+                    // 因为 winit 在 macOS 上 monitor 返回的值可能不准确
+                    let actual_scale = window.scale_factor();
+
+                    // 检查窗口的实际位置
+                    let actual_position = window.outer_position().ok();
+
+                    tracing::info!(
+                        "[创建窗口 {}] Scale 对比: monitor.scale={}, window.scale={}",
+                        window_index,
+                        scale,
+                        actual_scale
+                    );
+
+                    // 决定使用哪个位置
+                    // 注意：在 macOS 上，monitor.position() 和 window.outer_position() 可能使用不同的坐标系统
+                    // monitor.position() 在 high DPI 下可能返回逻辑坐标
+                    // window.outer_position() 也可能返回逻辑坐标
+                    // 为了保持一致性，始终使用 monitor.position() 并根据 scale 转换
+                    let final_position = if let Some(pos) = actual_position {
+                        tracing::info!(
+                            "[创建窗口 {}] 位置对比: monitor.position=({}, {}), window.outer_position=({}, {}), scale={}",
+                            window_index,
+                            physical_position.x,
+                            physical_position.y,
+                            pos.x,
+                            pos.y,
+                            actual_scale
+                        );
+
+                        // 始终使用 monitor.position()，以保证一致性
+                        // 因为背景画布是基于 monitor 信息构建的
+                        tracing::info!(
+                            "[创建窗口 {}] 使用 monitor.position 保持坐标系统一致",
+                            window_index
+                        );
+                        (physical_position.x, physical_position.y)
+                    } else {
+                        (physical_position.x, physical_position.y)
+                    };
+
                     let info = WindowInfo::new(
                         window,
                         actual_inner_size,
-                        scale,
-                        physical_position.x,
-                        physical_position.y,
+                        actual_scale, // 使用 window 的实际 scale
+                        final_position.0,
+                        final_position.1,
                     );
+
+                    tracing::info!("[创建窗口 {}] ✅ WindowInfo 创建完成:", window_index);
+                    tracing::info!(
+                        "  └─ size_px (物理尺寸): {}x{}",
+                        info.size_px.width,
+                        info.size_px.height
+                    );
+                    tracing::info!(
+                        "  └─ virtual_x, virtual_y (物理坐标): ({}, {})",
+                        info.virtual_x,
+                        info.virtual_y
+                    );
+                    tracing::info!("  └─ scale: {}", info.scale);
+                    tracing::info!(
+                        "  └─ 逻辑尺寸计算: {}x{} / {} = {}x{}",
+                        info.size_px.width,
+                        info.size_px.height,
+                        info.scale,
+                        (info.size_px.width as f64 / info.scale) as u32,
+                        (info.size_px.height as f64 / info.scale) as u32
+                    );
+                    tracing::info!(
+                        "  └─ 逻辑坐标计算: ({}, {}) / {} = ({}, {})",
+                        info.virtual_x,
+                        info.virtual_y,
+                        info.scale,
+                        (info.virtual_x as f64 / info.scale) as i32,
+                        (info.virtual_y as f64 / info.scale) as i32
+                    );
+
                     self.windows.push(info);
                 }
                 Err(e) => {

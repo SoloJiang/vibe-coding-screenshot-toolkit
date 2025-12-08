@@ -116,11 +116,10 @@ impl RegionSelector for MockSelector {
     }
 }
 
-pub mod backend;
+mod background_renderer;
 mod coordinate_utils;
 mod event_handler;
 mod frame_timer;
-mod image_cache;
 pub mod platform;
 mod selection_app;
 mod selection_render;

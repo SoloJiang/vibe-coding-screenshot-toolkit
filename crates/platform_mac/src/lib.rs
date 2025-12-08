@@ -416,9 +416,9 @@ impl MacCapturer {
                 let monitor_id = monitor.id().ok()?;
                 let display_info = virtual_desktop.displays.iter().find(|d| d.id == monitor_id)?;
 
-                // 捕获当前显示器
+                // 捕获当前显示器（注意：xcap 的 capture_image() 返回物理像素图像）
                 let img = monitor.capture_image().ok()?;
-                let (mon_width, mon_height) = (img.width(), img.height());
+                let (mon_width_physical, mon_height_physical) = (img.width(), img.height());
                 let rgba_data = img.into_raw();
 
                 // 计算在虚拟桌面画布中的位置（物理坐标）
@@ -430,32 +430,35 @@ impl MacCapturer {
 
                 #[cfg(debug_assertions)]
                 tracing::debug!(
-                    "显示器合成 [物理坐标]: 显示器{} 逻辑({},{}) -> 物理({},{}) -> canvas({},{}) 尺寸{}x{}",
+                    "显示器合成: 显示器{} 逻辑({},{}) scale={} -> 物理({},{}) -> canvas({},{}) 图像尺寸{}x{} (物理)",
                     monitor_id,
                     display_info.x,
                     display_info.y,
+                    scale,
                     phys_x,
                     phys_y,
                     canvas_x,
                     canvas_y,
-                    mon_width,
-                    mon_height
+                    mon_width_physical,
+                    mon_height_physical
                 );
 
-                Some((rgba_data, mon_width, mon_height, canvas_x, canvas_y))
+                Some((rgba_data, mon_width_physical, mon_height_physical, canvas_x, canvas_y))
             })
             .collect();
 
-        // 串行合成到画布（避免数据竞争）
-        for (rgba_data, mon_width, mon_height, canvas_x, canvas_y) in captured_monitors {
-            for row in 0..mon_height {
+        // 串行合成到画布（图像已经是物理像素，直接复制）
+        for (rgba_data, mon_width_physical, mon_height_physical, canvas_x, canvas_y) in
+            captured_monitors
+        {
+            for row in 0..mon_height_physical {
                 if canvas_y + row >= canvas_height {
                     break;
                 }
-                let src_row_start = (row * mon_width * 4) as usize;
-                let src_row_end = src_row_start + (mon_width * 4) as usize;
+                let src_row_start = (row * mon_width_physical * 4) as usize;
+                let src_row_end = src_row_start + (mon_width_physical * 4) as usize;
                 let dst_row_start = (((canvas_y + row) * canvas_width + canvas_x) * 4) as usize;
-                let dst_row_end = dst_row_start + (mon_width * 4) as usize;
+                let dst_row_end = dst_row_start + (mon_width_physical * 4) as usize;
 
                 if dst_row_end <= canvas.len() && src_row_end <= rgba_data.len() {
                     canvas[dst_row_start..dst_row_end]
@@ -639,6 +642,15 @@ impl MacCapturer {
         }
 
         // 构建虚拟桌面信息用于区域选择（物理坐标）
+        #[cfg(debug_assertions)]
+        tracing::info!(
+            "[platform_mac] 传递给 ui_overlay 的 virtual_bounds (物理坐标): min=({}, {}), size={}x{}",
+            physical_min_x,
+            physical_min_y,
+            physical_width,
+            physical_height
+        );
+
         let virtual_bounds = (
             physical_min_x,
             physical_min_y,
@@ -673,17 +685,38 @@ impl MacCapturer {
             }
         };
 
-        // 坐标已经是物理虚拟桌面坐标，直接使用
+        // 坐标已经是逻辑坐标，需要乘以 scale 转换为物理坐标
         let scale = if rect.scale.is_finite() && rect.scale > 0.0 {
             rect.scale
         } else {
             1.0
         } as f32;
 
+        tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        tracing::info!("[platform_mac] 收到的 Region (逻辑坐标):");
+        tracing::info!(
+            "  └─ x={}, y={}, w={}, h={}",
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h
+        );
+        tracing::info!("  └─ scale={}", rect.scale);
+
         let x_virtual = (rect.x * scale).floor() as i32; // 不使用 max(0.0)，保留负坐标
         let y_virtual = (rect.y * scale).floor() as i32; // 不使用 max(0.0)，保留负坐标
         let w = (rect.w * scale).round().max(0.0) as u32;
         let h = (rect.h * scale).round().max(0.0) as u32;
+
+        tracing::info!("[platform_mac] 转换为物理坐标:");
+        tracing::info!(
+            "  └─ x_virtual={}, y_virtual={}, w={}, h={}",
+            x_virtual,
+            y_virtual,
+            w,
+            h
+        );
+        tracing::info!("  └─ 计算公式: 逻辑坐标 * scale = 物理坐标");
 
         // 在虚拟桌面坐标系中进行裁剪
         // 注意：现在选择区域和画布都是物理坐标，所以使用物理边界
