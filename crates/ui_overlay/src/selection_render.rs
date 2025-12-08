@@ -1,53 +1,106 @@
 /// 选择器渲染逻辑模块
 ///
-/// 提供选择框的渲染管理功能
+/// 提供选择框的渲染管理功能，使用 egui painter 进行绘制
 use crate::event_handler::EventHandler;
 
-/// 背景处理工具
-pub struct BackgroundProcessor;
+/// egui 选择框渲染器
+pub struct EguiSelectionRenderer;
 
-impl BackgroundProcessor {
-    /// 将背景与叠加颜色混合（暗化效果）
+impl EguiSelectionRenderer {
+    /// 使用 egui painter 渲染选择框
     ///
-    /// 性能优化：使用 rayon 并行处理像素
-    /// - 小图像（< 256KB）使用单线程避免线程开销
-    /// - 大图像使用多线程并行处理
-    pub fn tint_background(bg: &[u8], overlay_color: [u8; 4]) -> Vec<u8> {
-        use rayon::prelude::*;
+    /// # Arguments
+    /// * `painter` - egui painter
+    /// * `selection_rect` - 选择框矩形 (x, y, w, h)，逻辑坐标
+    /// * `window_size` - 窗口尺寸 (width, height)，逻辑坐标
+    pub fn render_selection(
+        painter: &egui::Painter,
+        selection_rect: Option<(f32, f32, f32, f32)>,
+        window_size: (f32, f32),
+    ) {
+        let (win_w, win_h) = window_size;
 
-        let overlay_alpha = overlay_color[3] as u16;
-        let inv_alpha = 255u16.saturating_sub(overlay_alpha);
-        let tint_r = overlay_color[0] as u16;
-        let tint_g = overlay_color[1] as u16;
-        let tint_b = overlay_color[2] as u16;
+        // 暗化遮罩颜色 (半透明黑色)
+        let darken_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 128);
 
-        let mut tinted = vec![0u8; bg.len()];
+        // 如果有选择框，绘制选择框外的暗化遮罩
+        if let Some((x, y, w, h)) = selection_rect {
+            tracing::trace!(
+                "📐 绘制选择框和遮罩: pos=({:.1}, {:.1}), size=({:.1}x{:.1})",
+                x,
+                y,
+                w,
+                h
+            );
 
-        // 对于小图像，使用单线程避免并行开销
-        const PARALLEL_THRESHOLD: usize = 256 * 1024; // 256KB
+            let sel_rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h));
 
-        if bg.len() < PARALLEL_THRESHOLD {
-            // 单线程处理小图像
-            for (src, dst) in bg.chunks_exact(4).zip(tinted.chunks_exact_mut(4)) {
-                dst[0] = (((src[0] as u16) * inv_alpha + tint_r * overlay_alpha) / 255) as u8;
-                dst[1] = (((src[1] as u16) * inv_alpha + tint_g * overlay_alpha) / 255) as u8;
-                dst[2] = (((src[2] as u16) * inv_alpha + tint_b * overlay_alpha) / 255) as u8;
-                dst[3] = 255;
+            // 绘制4个矩形遮罩覆盖选择框外的区域
+            // 1. 上方遮罩
+            if y > 0.0 {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(win_w, y)),
+                    0.0,
+                    darken_color,
+                );
             }
-        } else {
-            // 并行处理大图像（按像素行分块）
-            tinted
-                .par_chunks_mut(4)
-                .zip(bg.par_chunks(4))
-                .for_each(|(dst, src)| {
-                    dst[0] = (((src[0] as u16) * inv_alpha + tint_r * overlay_alpha) / 255) as u8;
-                    dst[1] = (((src[1] as u16) * inv_alpha + tint_g * overlay_alpha) / 255) as u8;
-                    dst[2] = (((src[2] as u16) * inv_alpha + tint_b * overlay_alpha) / 255) as u8;
-                    dst[3] = 255;
-                });
-        }
 
-        tinted
+            // 2. 下方遮罩
+            let bottom = y + h;
+            if bottom < win_h {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(0.0, bottom), egui::pos2(win_w, win_h)),
+                    0.0,
+                    darken_color,
+                );
+            }
+
+            // 3. 左侧遮罩
+            if x > 0.0 {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(0.0, y), egui::pos2(x, bottom)),
+                    0.0,
+                    darken_color,
+                );
+            }
+
+            // 4. 右侧遮罩
+            let right = x + w;
+            if right < win_w {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(egui::pos2(right, y), egui::pos2(win_w, bottom)),
+                    0.0,
+                    darken_color,
+                );
+            }
+
+            // 绘制白色边框（2像素宽）
+            painter.rect_stroke(
+                sel_rect,
+                0.0,
+                egui::Stroke::new(2.0, egui::Color32::WHITE),
+                egui::StrokeKind::Outside,
+            );
+
+            // 绘制尺寸信息
+            let size_text = format!("{}x{}", w as i32, h as i32);
+            let text_pos = egui::pos2(x + w / 2.0, (y - 20.0_f32).max(5.0));
+            painter.text(
+                text_pos,
+                egui::Align2::CENTER_CENTER,
+                size_text,
+                egui::FontId::proportional(14.0),
+                egui::Color32::WHITE,
+            );
+        } else {
+            // 没有选择框时，整个窗口显示暗化遮罩
+            tracing::trace!("📐 绘制全屏暗化遮罩");
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(win_w, win_h)),
+                0.0,
+                darken_color,
+            );
+        }
     }
 }
 
@@ -86,17 +139,10 @@ impl WindowRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_tint_background() {
-        let bg = vec![255, 128, 64, 255, 200, 100, 50, 255];
-        let overlay_color = [0, 0, 0, 128]; // 半透明黑色
-        let tinted = BackgroundProcessor::tint_background(&bg, overlay_color);
-
-        assert_eq!(tinted.len(), bg.len());
-        // 验证颜色被暗化
-        assert!(tinted[0] < bg[0]);
-        assert!(tinted[4] < bg[4]);
+        // This test was for BackgroundProcessor, which is now removed.
+        // So this test case is also removed.
     }
 }

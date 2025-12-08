@@ -107,33 +107,40 @@ impl EventHandler {
                 state.dragging = true;
                 state.start = state.curr;
                 state.invalidate_cache(); // 开始拖动时使缓存失效
+                tracing::debug!(
+                    "🖱️  开始拖拽: 起点=({:.0}, {:.0})",
+                    state.start.0,
+                    state.start.1
+                );
                 EventResult::Continue(true)
             }
             (MouseButton::Left, ElementState::Released) => {
                 state.dragging = false;
-                // 拖动结束后继续保持选框显示，等待用户按 Enter 确认
-                // 触发重绘以显示最终选框
+                tracing::debug!(
+                    "🖱️  结束拖拽: 终点=({:.0}, {:.0})",
+                    state.curr.0,
+                    state.curr.1
+                );
+                // 拖动结束后显示工具栏
+                if state.has_valid_selection() {
+                    let (x0, y0, x1, y1) = state.calculate_selection_rect();
+                    tracing::debug!(
+                        "   └─ 有效选择: ({:.0}, {:.0}) -> ({:.0}, {:.0}), 尺寸=({:.0}x{:.0})",
+                        x0,
+                        y0,
+                        x1,
+                        y1,
+                        (x1 - x0).abs(),
+                        (y1 - y0).abs()
+                    );
+                    state.toolbar_visible = true;
+                } else {
+                    tracing::debug!("   └─ 选择无效（太小）");
+                }
+                // 触发重绘以显示最终选框和工具栏
                 EventResult::Continue(state.has_valid_selection())
             }
             _ => EventResult::Continue(false),
-        }
-    }
-
-    /// 转换鼠标位置坐标
-    pub fn convert_cursor_position(
-        position: winit::dpi::PhysicalPosition<f64>,
-        virtual_x: i32,
-        virtual_y: i32,
-        virtual_bounds: Option<(i32, i32, u32, u32)>,
-        scale: f64,
-    ) -> (f64, f64) {
-        if virtual_bounds.is_some() {
-            // 虚拟桌面模式：使用物理像素，叠加窗口在虚拟桌面的偏移
-            (virtual_x as f64 + position.x, virtual_y as f64 + position.y)
-        } else {
-            // 非虚拟模式：转换为逻辑坐标
-            let logical_pos = position.to_logical::<f64>(scale);
-            (logical_pos.x, logical_pos.y)
         }
     }
 
@@ -210,16 +217,6 @@ mod tests {
         assert!(!state.dragging);
         // 修改断言：鼠标释放不再立即完成，而是继续显示选框等待确认
         assert!(matches!(result, EventResult::Continue(true)));
-    }
-
-    #[test]
-    fn test_convert_cursor_position_virtual() {
-        let pos = winit::dpi::PhysicalPosition::new(50.0, 60.0);
-        let virtual_bounds = Some((0, 0, 1920, 1080));
-
-        let (x, y) = EventHandler::convert_cursor_position(pos, 100, 200, virtual_bounds, 2.0);
-
-        assert_eq!((x, y), (150.0, 260.0));
     }
 
     #[test]

@@ -3,6 +3,16 @@
 /// 管理选择框的状态、修饰键、重绘控制等
 use crate::Region;
 
+/// 应用模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum AppMode {
+    /// 选择区域模式
+    SelectingRegion,
+    /// 标注编辑模式
+    EditingAnnotations,
+}
+
 /// 选择器应用的状态
 ///
 /// 包含选择框的位置、大小、修饰键状态以及性能优化相关的缓存
@@ -31,6 +41,11 @@ pub struct SelectionState {
     cached_rect: Option<(f64, f64, f64, f64)>,
     /// 缓存是否有效
     cache_valid: bool,
+    /// 当前应用模式
+    #[allow(dead_code)]
+    pub app_mode: AppMode,
+    /// 工具栏是否可见
+    pub toolbar_visible: bool,
 }
 
 impl SelectionState {
@@ -49,6 +64,8 @@ impl SelectionState {
             last_redraw_time: std::time::Instant::now(),
             cached_rect: None,
             cache_valid: false,
+            app_mode: AppMode::SelectingRegion,
+            toolbar_visible: false,
         }
     }
 
@@ -115,22 +132,6 @@ impl SelectionState {
         sx != ex && sy != ey
     }
 
-    /// 构建当前选择的 Region 对象
-    pub fn build_region(&mut self, scale: f32) -> Option<Region> {
-        if !self.has_valid_selection() {
-            return None;
-        }
-
-        let (sx, sy, ex, ey) = self.calculate_selection_rect();
-        Some(Region {
-            x: sx.round() as f32,
-            y: sy.round() as f32,
-            w: (ex - sx).abs().round() as f32,
-            h: (ey - sy).abs().round() as f32,
-            scale,
-        })
-    }
-
     /// 重绘频率控制
     ///
     /// 限制到 60 FPS (16ms 间隔) 以优化性能
@@ -149,11 +150,6 @@ impl SelectionState {
     pub fn mark_redraw_requested(&mut self) {
         self.redraw_pending = true;
         self.last_redraw_time = std::time::Instant::now();
-    }
-
-    /// 清除重绘标记
-    pub fn clear_redraw_pending(&mut self) {
-        self.redraw_pending = false;
     }
 }
 
